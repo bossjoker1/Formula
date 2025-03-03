@@ -99,7 +99,7 @@ class FFuncContext:
 
 
     def copy(self):
-        new_context = FFuncContext(self.func, self.parent_contract)
+        new_context = FFuncContext(self.func, self.parent_contract, self.parent_func)
         new_context.currentFormulaMap = {var: fformula.copy() for var, fformula in self.currentFormulaMap.items()}
         new_context.globalFuncConstraint = self.globalFuncConstraint
         new_context.refMap = {var: ref for var, ref in self.refMap.items()}
@@ -196,13 +196,35 @@ class FFunction:
                 return
             
         if isinstance(ir, InternalCall):
+            # if ir.is_modifier_call:
+            #     continue
+            callee_func = FFunction(ir.function, self.parent_contract)
+            callee_context = FFuncContext(ir.function, self.parent_contract, self.func)
+            callee_context.globalFuncConstraint = context.globalFuncConstraint
+            callee_func.buildFFormulaMap(callee_context)
+            # map args to params
+            self.mapArgsToParams(ir.arguments, ir.function.parameters, context, callee_context)
+
             if ir.lvalue:
-                pass
+                pass    
         
         if isinstance(ir, HighLevelCall):
             pass
 
     
+    def mapArgsToParams(self, args:List[Variable], params:List[Variable], context:FFuncContext, callee_context:FFuncContext):
+        for arg, param in zip(args, params):
+            arg = self.getRefPointsTo(arg, context)
+            logger.debug(f"[CALL] arg: {arg}, param: {param}")
+            if arg in context.currentFormulaMap.keys():
+                arg_exprs = context.currentFormulaMap[arg].expressions_with_constraints.copy()
+                callee_context.currentFormulaMap[param] = FFormula(FStateVar(self.parent_contract, param), self.parent_contract, self)
+                callee_context.currentFormulaMap[param].expressions_with_constraints = arg_exprs
+            else:
+                logger.error(f"Argument {arg} not found in caller context")
+        return
+    
+
     def handleUnaryIR(self, ir:Unary, context:FFuncContext):
         assert isinstance(ir.lvalue, TemporaryVariable)
         rvalue = self.getRefPointsTo(ir.rvalue, context)
@@ -218,6 +240,7 @@ class FFunction:
         context.updateContext(ir.lvalue, fformula)
         return
     
+    
     def handleTypeConversionIR(self, ir:TypeConversion, context:FFuncContext):
         assert isinstance(ir.lvalue, TemporaryVariable)
         rvalue = self.getRefPointsTo(ir.variable, context)
@@ -229,6 +252,7 @@ class FFunction:
         fformula.expressions_with_constraints = rexp
         context.updateContext(ir.lvalue, fformula)
         return
+    
 
     def handleAssignmentIR(self, ir:Assignment, context:FFuncContext):
         lvalue, rvalue = self.getRefPointsTo(ir.lvalue, context), self.getRefPointsTo(ir.rvalue, context)
@@ -239,7 +263,7 @@ class FFunction:
 
     def handleMemberIR(self, ir:Member, context:FFuncContext):
         var, field = ir.variable_left, ir.variable_right
-        logger.debug(f"==== [Member] {var}.{field}")
+        # logger.debug(f"==== [Member] {var}.{field}")
         ref = ir.lvalue # testStruct.age
         if isinstance(ref, ReferenceVariable):
             member_var = FMap(var, field, ref.type)
@@ -304,6 +328,7 @@ class FFunction:
             res.append(ExpressionWithConstraint(combined_expr, combined_constraint))
 
         return res
+    
 
     # TODO: SolidityVariables are not complete.
     def handleVariableExpr(self, var:Variable, context:FFuncContext) -> List[ExpressionWithConstraint]:
@@ -359,20 +384,23 @@ class FFunction:
     def buildCFG(self):
         context = FFuncContext(self.func, self.parent_contract.sli_contract)
         self.buildFFormulaMap(context)
+        self.call_stack = []
         work_list = [(context, self.func.entry_point)]
+        self.call_stack.append(work_list)
 
-        call_stack = []
-        call_stack.append(context)
-
-        while work_list:
-            # add a funcCall_nodes_list for inter-function/inter-contract analysis
-            context, node = work_list.pop(0)
-            logger.debug(f"[N] Processing node {node}")
+        while self.call_stack:
+            # add a current_work_list for inter-function/inter-contract analysis
+            current_work_list = self.call_stack[-1]
+            if len(current_work_list) == 0:
+                self.call_stack.pop()
+                continue
+            context, node = current_work_list.pop(0)
+            logger.debug(f"[N] Current Function <{context.func.canonical_name}> Processing node {node}")
             for ir in node.irs:
                 logger.debug(f"----- ir[{type(ir)}] : {ir}")
             self.analyzeNode(node, context)
-           
-           
+
+
             # ?
             for son in node.sons:
                 work_list.append((context.copy(), son))

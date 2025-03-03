@@ -3,3 +3,8 @@
 
 # Ignore Python compiled files
 __pycache__/
+
+
+# log files
+log
+log*
