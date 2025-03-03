@@ -1,0 +1,380 @@
+from typing import List, Dict, Any
+from loguru import logger
+from slither.core.declarations import (
+    Function, 
+    Contract, 
+    SolidityVariable,
+    SolidityFunction,
+) 
+from slither.core.cfg.node import NodeType, Node
+from slither.core.variables import (
+    StateVariable,
+    Variable,
+    LocalVariable,
+)
+from slither.slithir.variables import (
+    ReferenceVariable,
+    TemporaryVariable,
+    Constant,
+)
+from slither.core.solidity_types import (
+    ElementaryType,
+)
+from slither.slithir.operations import(
+    Operation,
+    Member,
+    Binary,
+    Call,
+    InternalCall,
+    HighLevelCall,
+    Return,
+    SolidityCall,
+    BinaryType,
+    Index,
+    Assignment,
+    TypeConversion,
+    Unary,
+    UnaryType
+)
+from z3 import *
+
+from FFormula import FFormula, FStateVar, ExpressionWithConstraint, FMap
+
+
+binary_op = {
+            BinaryType.ADDITION: lambda x, y: x + y,
+            BinaryType.SUBTRACTION: lambda x, y: x - y,
+            BinaryType.MULTIPLICATION: lambda x, y: x * y,
+            BinaryType.DIVISION: lambda x, y: x / y,
+            BinaryType.MODULO: lambda x, y: x % y,
+            BinaryType.EQUAL: lambda x, y: x == y,
+            BinaryType.NOT_EQUAL: lambda x, y: x != y,
+            BinaryType.LESS: lambda x, y: x < y,
+            BinaryType.LESS_EQUAL: lambda x, y: x <= y,
+            BinaryType.GREATER: lambda x, y: x > y,
+            BinaryType.GREATER_EQUAL: lambda x, y: x >= y,
+            BinaryType.ANDAND: lambda x, y: And(x, y),
+            BinaryType.OROR: lambda x, y: Or(x, y),
+            BinaryType.AND: lambda x, y: x & y,
+            BinaryType.OR: lambda x, y: x | y,
+            BinaryType.CARET: lambda x, y: x ^ y,
+            BinaryType.LEFT_SHIFT: lambda x, y: x << y,
+            BinaryType.RIGHT_SHIFT: lambda x, y: LShR(x, y),
+            BinaryType.POWER: lambda x, y: x ** y
+        }
+
+# To maintain the context of the function (call context, constraints, etc.)
+class FFuncContext:
+    def __init__(self, func:Function, parent_contract:Contract, parent_func:Function=None):
+        self.currentFormulaMap:Dict[Variable, FFormula] = {}
+        self.globalFuncConstraint = True
+        self.refMap:Dict[Variable, Variable] = {}
+        self.func = func
+        self.parent_contract = parent_contract
+        self.parent_func = parent_func
+                
+
+    def updateContext(self, var:Variable, fformula:FFormula):
+        # need to polish
+        self.currentFormulaMap[var] = fformula
+
+
+    def deleteContext(self, var:Variable):
+        if var in self.currentFormulaMap:
+            del self.currentFormulaMap[var]
+
+
+    def clearTempVariableCache(self):
+        variables_to_delete = []
+        for var in self.currentFormulaMap.keys():
+            if isinstance(var, TemporaryVariable):
+                variables_to_delete.append(var)
+        for var in variables_to_delete:
+            self.deleteContext(var)
+        self.clearRefMap()
+
+
+    def clearRefMap(self):
+        self.refMap.clear()
+
+
+    def copy(self):
+        new_context = FFuncContext(self.func, self.parent_contract)
+        new_context.currentFormulaMap = {var: fformula.copy() for var, fformula in self.currentFormulaMap.items()}
+        new_context.globalFuncConstraint = self.globalFuncConstraint
+        new_context.refMap = {var: ref for var, ref in self.refMap.items()}
+        return new_context
+    
+
+class FFunction:
+    def __init__(self, func:Function, parentContract):
+        from Contract import FContract
+        self.func = func
+        self.parent_contract:FContract = parentContract
+        # all state variables written in this function
+        self.stateVarWrite = self.func.variables_written
+        self.highlevelCalls = self.func.all_high_level_calls
+        self.FormulaMap:Dict[FStateVar, FFormula] = {}
+
+    
+    # init context and Formula map of the function's state variables
+    def buildFFormulaMap(self, context:FFuncContext):
+        for stateVar in self.stateVarWrite:
+            fstateVar = FStateVar(self.parent_contract, stateVar)
+            formula = FFormula(fstateVar, self.parent_contract, self)
+            self.FormulaMap[fstateVar] = formula
+            context.updateContext(stateVar, formula)
+        for params in self.func.parameters:
+            formula = FFormula(FStateVar(self.parent_contract, params), self.parent_contract, self)
+            context.updateContext(params, formula)
+        for localVar in self.func.local_variables:
+            formula = FFormula(FStateVar(self.parent_contract, localVar), self.parent_contract, self)
+            context.updateContext(localVar, formula)
+
+    def addFFormula(self, stateVar:FStateVar, fformula:FFormula):
+        self.FormulaMap[stateVar] = fformula
+
+    def printFFormulaMap(self):
+        for stateVar, fformula in self.FormulaMap.items():
+            logger.debug(f"StateVar: {stateVar.stateVar.name} in function {self.func.name}, formula: {fformula}")
+
+    def __str__(self):
+        return f"Function: [{self.func.name}] in contract [{self.parent_contract.main_name}]"
+
+
+    def analyzeNode(self, node: Node, context:FFuncContext):
+        # del formula map of temp variable
+        context.clearTempVariableCache()
+        if node.type == NodeType.EXPRESSION or node.type == NodeType.VARIABLE:
+            for ir in node.irs:
+                self.analyzeIR(ir, context)
+
+
+    def analyzeIR(self, ir:Operation, context:FFuncContext):
+        # case by case, no other better way I think
+        if isinstance(ir, Binary):
+            self.handleBinaryIROp(ir, context)
+
+        elif isinstance(ir, Assignment):
+            self.handleAssignmentIR(ir, context)
+            
+        # convert (this) to address
+        elif isinstance(ir, TypeConversion):
+            self.handleTypeConversionIR(ir, context)
+
+        # especially handle map/array variable
+        elif isinstance(ir, Index):
+            self.handleIndexIR(ir, context)
+
+        elif isinstance(ir, Member):
+            self.handleMemberIR(ir, context)
+
+        elif isinstance(ir, Unary):
+            self.handleUnaryIR(ir, context)
+
+        elif isinstance(ir, Call):
+            self.handleCallIR(ir, context)
+
+
+
+    def handleCallIR(self, ir:Call, context:FFuncContext):
+        # tackle with different kinds of call
+
+        # especially for require
+        if isinstance(ir, SolidityCall) and ir.function in [
+            SolidityFunction("require(bool,string)"), 
+            SolidityFunction("require(bool)")]: 
+            bool_var = ir.arguments[0]
+            assert bool_var in context.currentFormulaMap.keys()
+            for exp in context.currentFormulaMap[bool_var].expressions_with_constraints:
+                temp_res = simplify(And(And(exp.expression, exp.constraint), context.globalFuncConstraint))
+                if is_false(temp_res):
+                    continue
+                context.globalFuncConstraint = temp_res
+            # if globalFuncConstraint is still false(can be infer directly), discard the following nodes
+            if is_false(context.globalFuncConstraint):
+                return
+            
+        if isinstance(ir, InternalCall):
+            if ir.lvalue:
+                pass
+        
+        if isinstance(ir, HighLevelCall):
+            pass
+
+    
+    def handleUnaryIR(self, ir:Unary, context:FFuncContext):
+        assert isinstance(ir.lvalue, TemporaryVariable)
+        rvalue = self.getRefPointsTo(ir.rvalue, context)
+        uop = ir.type
+        rexp = self.handleVariableExpr(rvalue, context)
+        try:
+            if uop == UnaryType.BANG:
+                rexp = [ExpressionWithConstraint(simplify(Not(item.expression)), item.constraint) for item in rexp]
+        except Exception as e:
+            logger.error(f"Error in handling Unary IR: {e}")
+        fformula = FFormula(FStateVar(self.parent_contract, ir.lvalue), self.parent_contract, self)
+        fformula.expressions_with_constraints = rexp
+        context.updateContext(ir.lvalue, fformula)
+        return
+    
+    def handleTypeConversionIR(self, ir:TypeConversion, context:FFuncContext):
+        assert isinstance(ir.lvalue, TemporaryVariable)
+        rvalue = self.getRefPointsTo(ir.variable, context)
+        # conversion here
+        if not isinstance(rvalue, SolidityVariable):
+            rvalue.type = ir.type
+        rexp = self.handleVariableExpr(rvalue, context)
+        fformula = FFormula(FStateVar(self.parent_contract, ir.lvalue), self.parent_contract, self)
+        fformula.expressions_with_constraints = rexp
+        context.updateContext(ir.lvalue, fformula)
+        return
+
+    def handleAssignmentIR(self, ir:Assignment, context:FFuncContext):
+        lvalue, rvalue = self.getRefPointsTo(ir.lvalue, context), self.getRefPointsTo(ir.rvalue, context)
+        rexp = self.handleVariableExpr(rvalue, context)
+        # directly override
+        context.currentFormulaMap[lvalue].expressions_with_constraints = rexp
+
+
+    def handleMemberIR(self, ir:Member, context:FFuncContext):
+        var, field = ir.variable_left, ir.variable_right
+        logger.debug(f"==== [Member] {var}.{field}")
+        ref = ir.lvalue # testStruct.age
+        if isinstance(ref, ReferenceVariable):
+            member_var = FMap(var, field, ref.type)
+            context.refMap[ref] = member_var
+            if member_var not in context.currentFormulaMap:
+                fformula = FFormula(FStateVar(self.parent_contract, member_var), self.parent_contract, self)
+                context.updateContext(member_var, fformula)
+
+
+    def handleIndexIR(self, ir:Index, context:FFuncContext):
+        var, idx = ir.variable_left, ir.variable_right
+        # logger.debug(f"==== [Index] {var}[{idx}]")
+        ref = ir.lvalue # no need to get points_to, as we can only get _balance when we meet _balance[from]
+        if isinstance(ref, ReferenceVariable):
+            map_var = FMap(var, idx, ref.type)
+            context.refMap[ref] = map_var
+            if map_var not in context.currentFormulaMap:
+                fformula = FFormula(FStateVar(self.parent_contract, map_var), self.parent_contract, self)
+                context.updateContext(map_var, fformula)
+
+
+    # TODO: how to update context
+    def handleBinaryIROp(self, ir:Binary, context:FFuncContext):
+        result = ir.lvalue
+        # only care about state variables that will be recorded on-chain
+        result = self.getRefPointsTo(result, context)
+        left, right = self.getRefPointsTo(ir.variable_left, context), self.getRefPointsTo(ir.variable_right, context)
+        lexp, rexp = self.handleVariableExpr(left, context), self.handleVariableExpr(right, context)
+        # handle operation
+        merged_exprs = self.mergeExpWithConstraints(lexp, rexp, binary_op[ir.type])
+        if isinstance(result, StateVariable):
+            '''
+            I think only in ret expr, it needs to be added(or updated) in FormulaMap, 
+            otherwise we only update the func context 
+            '''
+            # so update here.
+            context.currentFormulaMap[result].expressions_with_constraints = merged_exprs
+        elif isinstance(result, TemporaryVariable):
+            # new instance
+            fformula = FFormula(FStateVar(self.parent_contract, result), self.parent_contract, self)
+            fformula.expressions_with_constraints = merged_exprs
+            context.updateContext(result, fformula)
+        # LocalVariables/Function Parameters
+        else:
+            if result in context.currentFormulaMap:
+                context.currentFormulaMap[result].expressions_with_constraints = merged_exprs
+            else:
+                logger.error(f"no such local/params variable {result.name} in context")
+    
+
+    def mergeExpWithConstraints(self, lexp:List[ExpressionWithConstraint], rexp:List[ExpressionWithConstraint], op:Any) -> List[ExpressionWithConstraint]:
+        res : List[ExpressionWithConstraint] = []
+        
+        for litem, ritem in zip(lexp, rexp):
+            # all possible binary op
+            combined_expr = simplify(op(litem.expression, ritem.expression))
+            if combined_expr == None:
+                logger.error(f"Error in merging expressions: {litem.expression} and {ritem.expression}")
+            combined_constraint = simplify(And(litem.constraint, ritem.constraint))
+            if is_false(combined_constraint):
+                continue
+            res.append(ExpressionWithConstraint(combined_expr, combined_constraint))
+
+        return res
+
+    # TODO: SolidityVariables are not complete.
+    def handleVariableExpr(self, var:Variable, context:FFuncContext) -> List[ExpressionWithConstraint]:
+        expressions_with_constraints = []
+        # handle Constant
+        if isinstance(var, Constant):
+            # logger.debug(f"==== [V] {var.name}, {var.type}, {var.value}")
+            formula = None
+            if var.type == ElementaryType("uint256"):
+                formula = IntVal(var.value)
+            elif var.type == ElementaryType("bool"):
+                formula = BoolVal(True) if var.value else BoolVal(False)
+            elif var.type == ElementaryType("string"):
+                formula = StringVal(var.value)
+            elif var.type == ElementaryType("address"):
+                formula = BitVecVal(var.value, 160)
+            varExpr = ExpressionWithConstraint(formula, context.globalFuncConstraint)
+            expressions_with_constraints.append(varExpr)
+        elif isinstance(var, SolidityVariable):
+            if var.name == "this":
+                formula = self.parent_contract.address_this
+                varExpr = ExpressionWithConstraint(formula, context.globalFuncConstraint)
+                expressions_with_constraints.append(varExpr)
+        elif var in context.currentFormulaMap:
+            expressions_with_constraints = context.currentFormulaMap[var].expressions_with_constraints
+            if len(expressions_with_constraints) == 0:
+                # assigning a symbolic value (with its name)
+                formula = None
+                if var.type == ElementaryType("uint256"):
+                    formula = Int(var.name)
+                elif var.type == ElementaryType("bool"):
+                    formula = Bool(var.name)
+                elif var.type == ElementaryType("string"):
+                    formula = String(var.name)
+                elif var.type == ElementaryType("address"):
+                    formula = BitVec(var.name, 160)
+                varExpr = ExpressionWithConstraint(formula, context.globalFuncConstraint)
+                expressions_with_constraints.append(varExpr)
+
+        return expressions_with_constraints
+         
+
+    def getRefPointsTo(self, ref:Variable, context:FFuncContext):
+        if ref in context.refMap:
+            return context.refMap[ref]
+        while isinstance(ref, ReferenceVariable):
+            ref = ref.points_to
+        return ref
+            
+                          
+    # reorder basic blocks(nodes) of function (especially for those have modifiers)
+    # pass Context to the son nodes
+    def buildCFG(self):
+        context = FFuncContext(self.func, self.parent_contract.sli_contract)
+        self.buildFFormulaMap(context)
+        work_list = [(context, self.func.entry_point)]
+
+        call_stack = []
+        call_stack.append(context)
+
+        while work_list:
+            # add a funcCall_nodes_list for inter-function/inter-contract analysis
+            context, node = work_list.pop(0)
+            logger.debug(f"[N] Processing node {node}")
+            for ir in node.irs:
+                logger.debug(f"----- ir[{type(ir)}] : {ir}")
+            self.analyzeNode(node, context)
+           
+           
+            # ?
+            for son in node.sons:
+                work_list.append((context.copy(), son))
+            
+                        

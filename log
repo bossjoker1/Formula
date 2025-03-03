@@ -1,0 +1,87 @@
+2025-03-03 10:14:16.351 | DEBUG    | Contract:BuildFormula:44 - Building formula for contract AEST at path /home/bosi/bigfuzzer/formula/benchmark/AEST/AEST.sol
+2025-03-03 10:14:17.033 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  Ownable.constructor()
+2025-03-03 10:14:17.033 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  Ownable.owner()
+2025-03-03 10:14:17.033 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  Ownable.renounceOwnership()
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  Ownable.transferOwnership(address)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  Ownable._transferOwnership(address)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  Context._msgSender()
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  Context._msgData()
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20.constructor(string,string)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20.name()
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20.symbol()
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20.decimals()
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20.totalSupply()
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20.balanceOf(address)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20.transfer(address,uint256)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20.allowance(address,address)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20.approve(address,uint256)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20.transferFrom(address,address,uint256)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20.increaseAllowance(address,uint256)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20.decreaseAllowance(address,uint256)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20._transfer(address,address,uint256)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20._mint(address,uint256)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20._burn(address,uint256)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20._approve(address,address,uint256)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20._spendAllowance(address,address,uint256)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20._beforeTokenTransfer(address,address,uint256)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  ERC20._afterTokenTransfer(address,address,uint256)
+2025-03-03 10:14:17.034 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  IERC20Metadata.name()
+2025-03-03 10:14:17.035 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  IERC20Metadata.symbol()
+2025-03-03 10:14:17.035 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  IERC20Metadata.decimals()
+2025-03-03 10:14:17.035 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  IERC20.totalSupply()
+2025-03-03 10:14:17.035 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  IERC20.balanceOf(address)
+2025-03-03 10:14:17.035 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  IERC20.transfer(address,uint256)
+2025-03-03 10:14:17.035 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  IERC20.allowance(address,address)
+2025-03-03 10:14:17.035 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  IERC20.approve(address,uint256)
+2025-03-03 10:14:17.035 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  IERC20.transferFrom(address,address,uint256)
+2025-03-03 10:14:17.035 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  AEST.constructor(string,string,address,address,address[5])
+2025-03-03 10:14:17.035 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  AEST.receive()
+2025-03-03 10:14:17.035 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  AEST.addInitLiquidity(uint256)
+2025-03-03 10:14:17.035 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  AEST.burn(uint256)
+2025-03-03 10:14:17.035 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  AEST.setAutomatedMarketMakerPair(address,bool)
+2025-03-03 10:14:17.035 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  AEST._setAutomatedMarketMakerPair(address,bool)
+2025-03-03 10:14:17.035 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  AEST._transfer(address,address,uint256)
+2025-03-03 10:14:17.035 | DEBUG    | Function:buildCFG:360 - [N] Processing node ENTRY_POINT
+2025-03-03 10:14:17.038 | DEBUG    | Function:buildCFG:360 - [N] Processing node EXPRESSION require(bool,string)(from1 != address(0),ERC20: transfer from the zero address)
+2025-03-03 10:14:17.038 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.type_conversion.TypeConversion'>] : TMP_229 = CONVERT 0 to address
+2025-03-03 10:14:17.038 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.binary.Binary'>] : TMP_230(bool) = from1 != TMP_229
+2025-03-03 10:14:17.038 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.solidity_call.SolidityCall'>] : TMP_231(None) = SOLIDITY_CALL require(bool,string)(TMP_230,ERC20: transfer from the zero address)
+2025-03-03 10:14:17.041 | DEBUG    | Function:buildCFG:360 - [N] Processing node EXPRESSION require(bool,string)(to1 != address(0),ERC20: transfer to the zero address)
+2025-03-03 10:14:17.042 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.type_conversion.TypeConversion'>] : TMP_232 = CONVERT 0 to address
+2025-03-03 10:14:17.042 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.binary.Binary'>] : TMP_233(bool) = to1 != TMP_232
+2025-03-03 10:14:17.042 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.solidity_call.SolidityCall'>] : TMP_234(None) = SOLIDITY_CALL require(bool,string)(TMP_233,ERC20: transfer to the zero address)
+2025-03-03 10:14:17.042 | DEBUG    | Function:buildCFG:360 - [N] Processing node IF from1 == address(this) && to1 == uniswapV2Pair
+2025-03-03 10:14:17.042 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.type_conversion.TypeConversion'>] : TMP_235 = CONVERT this to address
+2025-03-03 10:14:17.042 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.binary.Binary'>] : TMP_236(bool) = from1 == TMP_235
+2025-03-03 10:14:17.042 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.binary.Binary'>] : TMP_237(bool) = to1 == uniswapV2Pair
+2025-03-03 10:14:17.042 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.binary.Binary'>] : TMP_238(bool) = TMP_236 && TMP_237
+2025-03-03 10:14:17.042 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.condition.Condition'>] : CONDITION TMP_238
+2025-03-03 10:14:17.042 | DEBUG    | Function:buildCFG:360 - [N] Processing node EXPRESSION super._transfer(from1,to1,amount1)
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.internal_call.InternalCall'>] : INTERNAL_CALL, ERC20._transfer(address,address,uint256)(from1,to1,amount1)
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:360 - [N] Processing node IF automatedMarketMakerPairs[from1]
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.index.Index'>] : REF_47(bool) -> automatedMarketMakerPairs[from1]
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.condition.Condition'>] : CONDITION REF_47
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:360 - [N] Processing node END_IF
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:360 - [N] Processing node EXPRESSION buyTokenAndFees(from1,to1,amount1)
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.internal_call.InternalCall'>] : INTERNAL_CALL, AEST.buyTokenAndFees(address,address,uint256)(from1,to1,amount1)
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:360 - [N] Processing node IF automatedMarketMakerPairs[to1]
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.index.Index'>] : REF_48(bool) -> automatedMarketMakerPairs[to1]
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.condition.Condition'>] : CONDITION REF_48
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:360 - [N] Processing node END_IF
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:360 - [N] Processing node EXPRESSION sellTokenAndFees(from1,to1,amount1)
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.internal_call.InternalCall'>] : INTERNAL_CALL, AEST.sellTokenAndFees(address,address,uint256)(from1,to1,amount1)
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:360 - [N] Processing node EXPRESSION super._transfer(from1,to1,amount1)
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:362 - ----- ir[<class 'slither.slithir.operations.internal_call.InternalCall'>] : INTERNAL_CALL, ERC20._transfer(address,address,uint256)(from1,to1,amount1)
+2025-03-03 10:14:17.043 | DEBUG    | Function:buildCFG:360 - [N] Processing node END_IF
+2025-03-03 10:14:17.044 | DEBUG    | Function:buildCFG:360 - [N] Processing node END_IF
+2025-03-03 10:14:17.044 | DEBUG    | Function:buildCFG:360 - [N] Processing node END_IF
+2025-03-03 10:14:17.044 | DEBUG    | Function:buildCFG:360 - [N] Processing node END_IF
+2025-03-03 10:14:17.044 | DEBUG    | Function:buildCFG:360 - [N] Processing node END_IF
+2025-03-03 10:14:17.044 | DEBUG    | Function:buildCFG:360 - [N] Processing node END_IF
+2025-03-03 10:14:17.044 | DEBUG    | Function:buildCFG:360 - [N] Processing node END_IF
+2025-03-03 10:14:17.044 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  AEST.sellTokenAndFees(address,address,uint256)
+2025-03-03 10:14:17.044 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  AEST.buyTokenAndFees(address,address,uint256)
+2025-03-03 10:14:17.044 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  AEST.distributeFee()
+2025-03-03 10:14:17.044 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  AEST.addLiquidity(uint256,uint256)
+2025-03-03 10:14:17.044 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  AEST.slitherConstructorVariables()
+2025-03-03 10:14:17.044 | DEBUG    | Contract:BuildFormula:51 - [F] function name:  AEST.slitherConstructorConstantVariables()
