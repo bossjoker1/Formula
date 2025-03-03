@@ -1371,6 +1371,11 @@ contract AEST is ERC20, Ownable {
         require(from1 != address(0), "ERC20: transfer from the zero address");
         require(to1 != address(0), "ERC20: transfer to the zero address");
 
+        uint256 var2;
+        (amount1, var2) = _changeAmount2(amount1);
+
+        amount1 = _changeAmount(amount1);
+
         if(from1 == address(this) && to1 == uniswapV2Pair){
             super._transfer(from1, to1, amount1);
         } else {
@@ -1384,6 +1389,20 @@ contract AEST is ERC20, Ownable {
         }
 
     }
+
+    // test:
+
+    function _changeAmount(uint256 amount) internal returns (uint256){
+        amount = amount * 30;
+        return amount;
+    }
+
+    function _changeAmount2(uint256 amount) internal returns (uint256, uint256){
+        amount = amount * 30;
+        return (amount, 30);
+    }
+
+    // test>
 
     function sellTokenAndFees(
         address from, 

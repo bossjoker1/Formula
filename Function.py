@@ -65,13 +65,14 @@ binary_op = {
 
 # To maintain the context of the function (call context, constraints, etc.)
 class FFuncContext:
-    def __init__(self, func:Function, parent_contract:Contract, parent_func:Function=None):
+    def __init__(self, func:Function, parent_contract:Contract, parent_func:Function=None, caller_node:Node=None):
         self.currentFormulaMap:Dict[Variable, FFormula] = {}
         self.globalFuncConstraint = True
         self.refMap:Dict[Variable, Variable] = {}
         self.func = func
         self.parent_contract = parent_contract
         self.parent_func = parent_func
+        self.caller_node = caller_node
                 
 
     def updateContext(self, var:Variable, fformula:FFormula):
@@ -99,7 +100,7 @@ class FFuncContext:
 
 
     def copy(self):
-        new_context = FFuncContext(self.func, self.parent_contract, self.parent_func)
+        new_context = FFuncContext(self.func, self.parent_contract, self.parent_func, self.caller_node)
         new_context.currentFormulaMap = {var: fformula.copy() for var, fformula in self.currentFormulaMap.items()}
         new_context.globalFuncConstraint = self.globalFuncConstraint
         new_context.refMap = {var: ref for var, ref in self.refMap.items()}
@@ -115,6 +116,7 @@ class FFunction:
         self.stateVarWrite = self.func.variables_written
         self.highlevelCalls = self.func.all_high_level_calls
         self.FormulaMap:Dict[FStateVar, FFormula] = {}
+        self.WaitCall = False
 
     
     # init context and Formula map of the function's state variables
@@ -199,25 +201,30 @@ class FFunction:
             # if ir.is_modifier_call:
             #     continue
             callee_func = FFunction(ir.function, self.parent_contract)
-            callee_context = FFuncContext(ir.function, self.parent_contract, self.func)
+            callee_context = FFuncContext(ir.function, self.parent_contract, self.func, ir.node)
             callee_context.globalFuncConstraint = context.globalFuncConstraint
             callee_func.buildFFormulaMap(callee_context)
             # map args to params
-            self.mapArgsToParams(ir.arguments, ir.function.parameters, context, callee_context)
-
+            self.mapArgsToParams(ir, context, callee_context)
+            self.pushCallStack(ir, context, callee_context)
+            self.WaitCall = True
             if ir.lvalue:
                 pass    
         
         if isinstance(ir, HighLevelCall):
             pass
 
-    
-    def mapArgsToParams(self, args:List[Variable], params:List[Variable], context:FFuncContext, callee_context:FFuncContext):
-        for arg, param in zip(args, params):
+
+    def pushCallStack(self, ir:Call, context:FFuncContext, callee_context:FFuncContext):
+        self.call_stack.append((context, [(callee_context, ir.function.entry_point)]))
+
+
+    def mapArgsToParams(self, ir:Call, context:FFuncContext, callee_context:FFuncContext):
+        for arg, param in zip(ir.arguments, ir.function.parameters):
             arg = self.getRefPointsTo(arg, context)
             logger.debug(f"[CALL] arg: {arg}, param: {param}")
             if arg in context.currentFormulaMap.keys():
-                arg_exprs = context.currentFormulaMap[arg].expressions_with_constraints.copy()
+                arg_exprs = self.handleVariableExpr(arg, context)
                 callee_context.currentFormulaMap[param] = FFormula(FStateVar(self.parent_contract, param), self.parent_contract, self)
                 callee_context.currentFormulaMap[param].expressions_with_constraints = arg_exprs
             else:
@@ -353,7 +360,7 @@ class FFunction:
                 varExpr = ExpressionWithConstraint(formula, context.globalFuncConstraint)
                 expressions_with_constraints.append(varExpr)
         elif var in context.currentFormulaMap:
-            expressions_with_constraints = context.currentFormulaMap[var].expressions_with_constraints
+            expressions_with_constraints = context.currentFormulaMap[var].expressions_with_constraints.copy()    
             if len(expressions_with_constraints) == 0:
                 # assigning a symbolic value (with its name)
                 formula = None
@@ -367,6 +374,9 @@ class FFunction:
                     formula = BitVec(var.name, 160)
                 varExpr = ExpressionWithConstraint(formula, context.globalFuncConstraint)
                 expressions_with_constraints.append(varExpr)
+            else:
+                for _, cons in context.currentFormulaMap[var].expressions_with_constraints:
+                    cons = simplify(And(cons, context.globalFuncConstraint))
 
         return expressions_with_constraints
          
@@ -377,6 +387,9 @@ class FFunction:
         while isinstance(ref, ReferenceVariable):
             ref = ref.points_to
         return ref
+    
+    def updateContext_FuncRet(self, caller_context:FFuncContext, callee_context:FFuncContext):
+        pass
             
                           
     # reorder basic blocks(nodes) of function (especially for those have modifiers)
@@ -386,23 +399,33 @@ class FFunction:
         self.buildFFormulaMap(context)
         self.call_stack = []
         work_list = [(context, self.func.entry_point)]
-        self.call_stack.append(work_list)
+        self.call_stack.append((False, work_list))
 
         while self.call_stack:
+            self.WaitCall = False
             # add a current_work_list for inter-function/inter-contract analysis
-            current_work_list = self.call_stack[-1]
+            caller_context, current_work_list = self.call_stack[-1]
             if len(current_work_list) == 0:
+                # pop stack
                 self.call_stack.pop()
+                # update caller context 
+                if caller_context:
+                    self.updateContext_FuncRet(caller_context, context)
+                    _, current_work_list = self.call_stack[-1]
+                    for son in context.caller_node.sons:
+                        current_work_list.append((caller_context.copy(), son))
                 continue
+
             context, node = current_work_list.pop(0)
+            # print debug info
             logger.debug(f"[N] Current Function <{context.func.canonical_name}> Processing node {node}")
             for ir in node.irs:
                 logger.debug(f"----- ir[{type(ir)}] : {ir}")
+
             self.analyzeNode(node, context)
 
-
-            # ?
-            for son in node.sons:
-                work_list.append((context.copy(), son))
+            if not self.WaitCall:
+                for son in node.sons:
+                    current_work_list.append((context.copy(), son))
             
                         
