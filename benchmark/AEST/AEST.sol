@@ -1371,6 +1371,9 @@ contract AEST is ERC20, Ownable {
         require(from1 != address(0), "ERC20: transfer from the zero address");
         require(to1 != address(0), "ERC20: transfer to the zero address");
 
+
+        // (uint256 number, bool flag, string memory message) = (42, true, "Hello, World!");
+
         uint256 var2;
         (amount1, var2) = _changeAmount2(amount1);
 
@@ -1393,7 +1396,7 @@ contract AEST is ERC20, Ownable {
     // test:
 
     function _changeAmount(uint256 amount) internal returns (uint256){
-        amount = amount * 30;
+        amount = amount * 3;
         return amount;
     }
 

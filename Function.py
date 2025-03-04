@@ -16,6 +16,7 @@ from slither.slithir.variables import (
     ReferenceVariable,
     TemporaryVariable,
     Constant,
+    TupleVariable,
 )
 from slither.core.solidity_types import (
     ElementaryType,
@@ -34,11 +35,12 @@ from slither.slithir.operations import(
     Assignment,
     TypeConversion,
     Unary,
-    UnaryType
+    UnaryType,
+    Unpack,
 )
 from z3 import *
 
-from FFormula import FFormula, FStateVar, ExpressionWithConstraint, FMap
+from FFormula import FFormula, FStateVar, ExpressionWithConstraint, FMap, FTuple
 
 
 binary_op = {
@@ -69,10 +71,20 @@ class FFuncContext:
         self.currentFormulaMap:Dict[Variable, FFormula] = {}
         self.globalFuncConstraint = True
         self.refMap:Dict[Variable, Variable] = {}
+
+        self.caller_node = caller_node
+        # means the rest of irs are tackling with return info, and we should delay to analyze them.
+        self.callflag = False
+
+        self.returnIRs:List[Operation] = []
+        self.callerRetVar:Variable = None
+        # name: ret_0, ret_1, ...,  ret_i
+        self.retVarMap: Dict[str, FFormula] = {}
+
         self.func = func
         self.parent_contract = parent_contract
         self.parent_func = parent_func
-        self.caller_node = caller_node
+
                 
 
     def updateContext(self, var:Variable, fformula:FFormula):
@@ -86,6 +98,8 @@ class FFuncContext:
 
 
     def clearTempVariableCache(self):
+        self.returnIRs = []
+        self.callerRetVar = None
         variables_to_delete = []
         for var in self.currentFormulaMap.keys():
             if isinstance(var, TemporaryVariable):
@@ -102,6 +116,9 @@ class FFuncContext:
     def copy(self):
         new_context = FFuncContext(self.func, self.parent_contract, self.parent_func, self.caller_node)
         new_context.currentFormulaMap = {var: fformula.copy() for var, fformula in self.currentFormulaMap.items()}
+        new_context.retVarMap = {var: fformula.copy() for var, fformula in self.retVarMap.items()}
+        new_context.returnIRs = self.returnIRs
+        new_context.callerRetVar = self.callerRetVar
         new_context.globalFuncConstraint = self.globalFuncConstraint
         new_context.refMap = {var: ref for var, ref in self.refMap.items()}
         return new_context
@@ -147,9 +164,15 @@ class FFunction:
     def analyzeNode(self, node: Node, context:FFuncContext):
         # del formula map of temp variable
         context.clearTempVariableCache()
-        if node.type == NodeType.EXPRESSION or node.type == NodeType.VARIABLE:
+        if node.type in {NodeType.EXPRESSION, NodeType.VARIABLE, NodeType.RETURN}:
             for ir in node.irs:
-                self.analyzeIR(ir, context)
+                if context.callflag:
+                    context.returnIRs.append(ir)
+                else:
+                    self.analyzeIR(ir, context)
+
+    
+    
 
 
     def analyzeIR(self, ir:Operation, context:FFuncContext):
@@ -177,8 +200,34 @@ class FFunction:
         elif isinstance(ir, Call):
             self.handleCallIR(ir, context)
 
+        elif isinstance(ir, Return):
+            self.handleRetIR(ir, context)
 
+        elif isinstance(ir, Unpack):
+            self.handleUnpackIR(ir, context)
 
+    
+    def handleUnpackIR(self, ir:Unpack, context:FFuncContext):
+        lvalue = self.getRefPointsTo(ir.lvalue, context)
+        tuple_var = FTuple(ir.tuple, ir.index, ir.tuple.type[ir.index])
+        rexp = self.handleVariableExpr(tuple_var, context)
+        context.currentFormulaMap[lvalue].expressions_with_constraints = rexp
+        return
+    
+
+    def handleRetIR(self, ir:Return, context:FFuncContext):
+        values, l_var = ir.values, len(ir.values)
+        assert l_var > 0
+        for idx, var in enumerate(values):
+            ret_idx = f"ret_{idx}"
+            var = self.getRefPointsTo(var, context)
+            var_exp = self.handleVariableExpr(var, context)
+            context.retVarMap[ret_idx] = FFormula(FStateVar(self.parent_contract, var), self.parent_contract, self)
+            context.retVarMap[ret_idx].expressions_with_constraints.extend(var_exp)
+
+        return
+
+    # TODO: modifier call
     def handleCallIR(self, ir:Call, context:FFuncContext):
         # tackle with different kinds of call
 
@@ -197,7 +246,7 @@ class FFunction:
             if is_false(context.globalFuncConstraint):
                 return
             
-        if isinstance(ir, InternalCall):
+        elif isinstance(ir, InternalCall):
             # if ir.is_modifier_call:
             #     continue
             callee_func = FFunction(ir.function, self.parent_contract)
@@ -209,9 +258,10 @@ class FFunction:
             self.pushCallStack(ir, context, callee_context)
             self.WaitCall = True
             if ir.lvalue:
-                pass    
-        
-        if isinstance(ir, HighLevelCall):
+                context.callflag = True
+                context.callerRetVar = self.getRefPointsTo(ir.lvalue, context)
+
+        elif isinstance(ir, HighLevelCall):
             pass
 
 
@@ -388,9 +438,30 @@ class FFunction:
             ref = ref.points_to
         return ref
     
+
+    # TODO: uncompleted
     def updateContext_FuncRet(self, caller_context:FFuncContext, callee_context:FFuncContext):
+        # 1. update return values
+        callerRetVar = caller_context.callerRetVar
+        if isinstance(callerRetVar, TemporaryVariable):
+            fformula = FFormula(FStateVar(self.parent_contract, callerRetVar), self.parent_contract, self)
+            fformula.expressions_with_constraints = callee_context.retVarMap['ret_0'].expressions_with_constraints.copy()
+            caller_context.updateContext(callerRetVar, fformula)
+        elif isinstance(callerRetVar, TupleVariable):
+            assert len(callee_context.retVarMap.keys()) > 0
+            for idx in range(len(callee_context.retVarMap.keys())):
+                ret_idx = f"ret_{idx}"
+                tuple_var = FTuple(callerRetVar, idx, callerRetVar.type[idx])
+                fformula = FFormula(FStateVar(self.parent_contract, tuple_var), self.parent_contract, self)
+                fformula.expressions_with_constraints = callee_context.retVarMap[ret_idx].expressions_with_constraints.copy()
+                caller_context.updateContext(tuple_var, fformula)
+
+        for ir in caller_context.returnIRs:
+            self.analyzeIR(ir, caller_context)
+
+        # 2. update state varibles
         pass
-            
+
                           
     # reorder basic blocks(nodes) of function (especially for those have modifiers)
     # pass Context to the son nodes
@@ -417,6 +488,7 @@ class FFunction:
                 continue
 
             context, node = current_work_list.pop(0)
+            context.callflag = False
             # print debug info
             logger.debug(f"[N] Current Function <{context.func.canonical_name}> Processing node {node}")
             for ir in node.irs:
