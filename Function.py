@@ -78,7 +78,7 @@ class FFuncContext:
 
         self.returnIRs:List[Operation] = []
         self.callerRetVar:Variable = None
-        # name: ret_0, ret_1, ...,  ret_i
+        # name: ret_0, ret_1, ...,  ret_i (especially for TupleVariable)
         self.retVarMap: Dict[str, FFormula] = {}
 
         self.func = func
@@ -86,7 +86,6 @@ class FFuncContext:
         self.parent_func = parent_func
 
                 
-
     def updateContext(self, var:Variable, fformula:FFormula):
         # need to polish
         self.currentFormulaMap[var] = fformula
@@ -130,7 +129,7 @@ class FFunction:
         self.func = func
         self.parent_contract:FContract = parentContract
         # all state variables written in this function
-        self.stateVarWrite = self.func.variables_written
+        self.stateVarWrite = self.func.state_variables_written
         self.highlevelCalls = self.func.all_high_level_calls
         self.FormulaMap:Dict[FStateVar, FFormula] = {}
         self.WaitCall = False
@@ -150,12 +149,18 @@ class FFunction:
             formula = FFormula(FStateVar(self.parent_contract, localVar), self.parent_contract, self)
             context.updateContext(localVar, formula)
 
-    def addFFormula(self, stateVar:FStateVar, fformula:FFormula):
-        self.FormulaMap[stateVar] = fformula
+
+    def addFFormula(self, stateVar:FStateVar, fformula:FFormula=None):
+        if stateVar in self.FormulaMap:
+            self.FormulaMap[stateVar].expressions_with_constraints.extend(fformula.expressions_with_constraints)
+        else:
+            self.FormulaMap[stateVar] = fformula
+
 
     def printFFormulaMap(self):
         for stateVar, fformula in self.FormulaMap.items():
             logger.debug(f"StateVar: {stateVar.stateVar.name} in function {self.func.name}, formula: {fformula}")
+
 
     def __str__(self):
         return f"Function: [{self.func.name}] in contract [{self.parent_contract.main_name}]"
@@ -171,8 +176,40 @@ class FFunction:
                 else:
                     self.analyzeIR(ir, context)
 
+        # modifier call
+        elif node.type == NodeType.PLACEHOLDER:
+            pass
+
+        # condition & loop:
+        elif node.type == NodeType.IF:
+            pass
+
+        elif node.type == NodeType.ENDIF:
+            pass
+
+        elif node.type == NodeType.STARTLOOP:
+            pass
+
+        elif node.type == NodeType.ENDLOOP:
+            pass
+
+        # callee function's modification on state variables will be handled when it returns
+        if self.is_terminal_node(node) and not self.WaitCall and not context.parent_func:
+            for var, formula in context.currentFormulaMap.items():
+                if len(formula.expressions_with_constraints) == 0:
+                    continue
+                if isinstance(var, StateVariable) or (isinstance(var, FMap) and isinstance(var.map, StateVariable)):
+                    self.addFFormula(FStateVar(self.parent_contract, var), formula)
+
+        return
     
     
+    def is_terminal_node(self, node:Node) -> bool:
+        if node.type in {NodeType.THROW}:
+            return False
+        if not node.sons or node.type == NodeType.RETURN:
+            return True
+        return False
 
 
     def analyzeIR(self, ir:Operation, context:FFuncContext):
@@ -223,9 +260,10 @@ class FFunction:
             var = self.getRefPointsTo(var, context)
             var_exp = self.handleVariableExpr(var, context)
             context.retVarMap[ret_idx] = FFormula(FStateVar(self.parent_contract, var), self.parent_contract, self)
-            context.retVarMap[ret_idx].expressions_with_constraints.extend(var_exp)
-
+            if var_exp not in context.retVarMap[ret_idx].expressions_with_constraints:
+                context.retVarMap[ret_idx].expressions_with_constraints.extend(var_exp)
         return
+    
 
     # TODO: modifier call
     def handleCallIR(self, ir:Call, context:FFuncContext):
@@ -250,7 +288,7 @@ class FFunction:
             # if ir.is_modifier_call:
             #     continue
             callee_func = FFunction(ir.function, self.parent_contract)
-            callee_context = FFuncContext(ir.function, self.parent_contract, self.func, ir.node)
+            callee_context = FFuncContext(func=ir.function, parent_contract=self.parent_contract, parent_func=context.func, caller_node=ir.node)
             callee_context.globalFuncConstraint = context.globalFuncConstraint
             callee_func.buildFFormulaMap(callee_context)
             # map args to params
@@ -460,13 +498,27 @@ class FFunction:
             self.analyzeIR(ir, caller_context)
 
         # 2. update state varibles
-        pass
+        for var, formula in callee_context.currentFormulaMap.items():
+            if len(formula.expressions_with_constraints) == 0:
+                continue
+            if isinstance(var, StateVariable) or (isinstance(var, FMap) and isinstance(var.map, StateVariable)):
+                if var in caller_context.currentFormulaMap:
+                    caller_context.currentFormulaMap[var].expressions_with_constraints.extend(formula.expressions_with_constraints)
+                else:
+                    caller_context.currentFormulaMap[var] = formula
+
+        if self.is_terminal_node(callee_context.caller_node):
+            for var, formula in caller_context.currentFormulaMap.items():
+                if len(formula.expressions_with_constraints) == 0:
+                    continue
+                if isinstance(var, StateVariable) or (isinstance(var, FMap) and isinstance(var.map, StateVariable)):
+                    self.addFFormula(FStateVar(self.parent_contract, var), formula)
 
                           
     # reorder basic blocks(nodes) of function (especially for those have modifiers)
     # pass Context to the son nodes
     def buildCFG(self):
-        context = FFuncContext(self.func, self.parent_contract.sli_contract)
+        context = FFuncContext(func=self.func, parent_contract=self.parent_contract.sli_contract)
         self.buildFFormulaMap(context)
         self.call_stack = []
         work_list = [(context, self.func.entry_point)]
@@ -485,12 +537,14 @@ class FFunction:
                     _, current_work_list = self.call_stack[-1]
                     for son in context.caller_node.sons:
                         current_work_list.append((caller_context.copy(), son))
+                    # need to update
+                    context = caller_context
                 continue
 
             context, node = current_work_list.pop(0)
             context.callflag = False
             # print debug info
-            logger.debug(f"[N] Current Function <{context.func.canonical_name}> Processing node {node}")
+            logger.debug(f"[N] Parent Function: {context.parent_func.canonical_name if context.parent_func else 'None'} \n [N] Current Function <{context.func.canonical_name}> Processing node {node}")
             for ir in node.irs:
                 logger.debug(f"----- ir[{type(ir)}] : {ir}")
 

@@ -42,6 +42,17 @@ class FFormula:
         return new_formula
     
 
+    def __str__(self):
+        result = ""
+        for expr_with_constraint in list(set(self.expressions_with_constraints)):
+            result += f"Expression: {expr_with_constraint.expression}, Constraint: {expr_with_constraint.constraint}"
+        return result
+    
+
+    def setFormula(self):
+        return list(set(self.expressions_with_constraints))
+    
+
 # for Map/Member/Array
 class FMap(Variable):
     def __init__(self, map:Variable, index:Variable, ttype):
@@ -51,16 +62,31 @@ class FMap(Variable):
         self._name = f"{map.name}[{index.name}]"
         self._type = ttype
 
+
     def __str__(self):
         return f"{self.map.name}[{self.index.name}]"
+    
     
     @property
     def map(self):
         return self._map
     
+    
     @property
     def index(self):
         return self._index
+    
+
+    def __eq__(self, other):
+        if isinstance(other, FMap):
+            return (self.map == other.map and
+                    self.index == other.index and
+                    self.type == other.type)
+        return False
+    
+
+    def __hash__(self):
+        return hash((self.map, self.index, self.type))
 
 
 # for tuple unpacking
@@ -72,12 +98,15 @@ class FTuple(Variable):
         self._name = f"{tuple.name}.({index})"
         self._type = ttype
 
+
     def __str__(self):
         return f"{self.tuple.name}[{self.index}]"
+    
     
     @property
     def tuple(self):
         return self._tuple
+    
     
     @property
     def index(self):

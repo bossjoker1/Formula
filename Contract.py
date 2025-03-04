@@ -48,8 +48,10 @@ def BuildFormula(contract_pairs):
         for func in fcontract.sli_contract.functions:
             # only care about public/external functions
             ffunc = FFunction(func, fcontract)
-            logger.debug(f"[F] function name:  {ffunc.func.canonical_name}")
+            # logger.debug(f"[F] function name:  {ffunc.func.canonical_name}")
             # IF branch test: AEST._transfer(address,address,uint256)
+            # ERC20._transfer(address,address,uint256)
             if ffunc.func.canonical_name == "AEST._transfer(address,address,uint256)":
                 print(ffunc)
                 ffunc.buildCFG()
+                ffunc.printFFormulaMap()

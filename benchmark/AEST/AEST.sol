@@ -403,10 +403,10 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
 
 
         // 数组测试
-        uint256[] memory testArray = new uint256[](3);
-        testArray[0] = 1;
-        testArray[1] = 2;
-        testArray[2] = 3;
+        // uint256[] memory testArray = new uint256[](3);
+        // testArray[0] = 1;
+        // testArray[1] = 2;
+        // testArray[2] = 3;
 
         // 结构体测试
         SimpleStruct memory simpleStruct;
@@ -1362,6 +1362,7 @@ contract AEST is ERC20, Ownable {
         emit SetAutomatedMarketMakerPair(pair, value);
     }
 
+    uint256 stateVar = 1;
 
     function _transfer(
         address from1,
@@ -1374,26 +1375,38 @@ contract AEST is ERC20, Ownable {
 
         // (uint256 number, bool flag, string memory message) = (42, true, "Hello, World!");
 
-        uint256 var2;
-        (amount1, var2) = _changeAmount2(amount1);
+        // _changeAmountState();
 
-        amount1 = _changeAmount(amount1);
+        // uint256 var2;
+        // (amount1, var2) = _changeAmount2(amount1);
 
-        if(from1 == address(this) && to1 == uniswapV2Pair){
-            super._transfer(from1, to1, amount1);
-        } else {
-            if(automatedMarketMakerPairs[from1]) {
-                buyTokenAndFees(from1, to1, amount1);
-            }else if (automatedMarketMakerPairs[to1]){
-                sellTokenAndFees(from1, to1, amount1);
-            }else {
-                super._transfer(from1, to1, amount1);
-            }
-        }
+        // amount1 = _changeAmount(amount1);
+
+         buyTokenAndFees(from1, to1, amount1);
+
+        // if(from1 == address(this) && to1 == uniswapV2Pair){
+        //     super._transfer(from1, to1, amount1);
+        // } else {
+        //     if(automatedMarketMakerPairs[from1]) {
+        //         buyTokenAndFees(from1, to1, amount1);
+        //     }else if (automatedMarketMakerPairs[to1]){
+        //         sellTokenAndFees(from1, to1, amount1);
+        //     }else {
+        //         super._transfer(from1, to1, amount1);
+        //     }
+        // }
+
+        
+
+        // amount1 = stateVar;
 
     }
 
     // test:
+
+    function _changeAmountState() internal{
+        stateVar = stateVar * 3;
+    }
 
     function _changeAmount(uint256 amount) internal returns (uint256){
         amount = amount * 3;
