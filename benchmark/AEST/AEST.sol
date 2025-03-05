@@ -376,6 +376,7 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      * - `to` cannot be the zero address.
      * - `from` must have a balance of at least `amount`.
      */
+     //erc20-transfer
     function _transfer(
         address from,
         address to,
@@ -1371,7 +1372,7 @@ contract AEST is ERC20, Ownable {
         _;
     }
 
-
+    // aset-transfer
     function _transfer(
         address from1,
         address to1,

@@ -290,9 +290,12 @@ class FFunction:
             if is_false(context.globalFuncConstraint):
                 return
             
-        elif isinstance(ir, InternalCall):
+        elif isinstance(ir, InternalCall) or isinstance(ir, HighLevelCall):
             # if ir.is_modifier_call:
             #     continue
+            # highlevel call requires more processing
+            if isinstance(ir, HighLevelCall):
+                pass
             callee_func = FFunction(ir.function, self.parent_contract)
             callee_context = FFuncContext(func=ir.function, parent_contract=self.parent_contract, parent_func=context.func, caller_node=ir.node)
             callee_context.globalFuncConstraint = context.globalFuncConstraint
@@ -305,27 +308,19 @@ class FFunction:
             if ir.lvalue:
                 context.callerRetVar = self.getRefPointsTo(ir.lvalue, context)
 
-        elif isinstance(ir, LibraryCall):
-            pass
-
-        elif isinstance(ir, HighLevelCall):
-            pass
-
 
     def pushCallStack(self, ir:Call, context:FFuncContext, callee_context:FFuncContext):
         self.call_stack.append((context, [(callee_context, ir.function.entry_point)]))
 
 
+    # TODO: constant var mapping
     def mapArgsToParams(self, ir:Call, context:FFuncContext, callee_context:FFuncContext):
         for arg, param in zip(ir.arguments, ir.function.parameters):
             arg = self.getRefPointsTo(arg, context)
             logger.debug(f"[CALL] arg: {arg}, param: {param}")
-            if arg in context.currentFormulaMap.keys():
-                arg_exprs = self.handleVariableExpr(arg, context)
-                callee_context.currentFormulaMap[param] = FFormula(FStateVar(self.parent_contract, param), self.parent_contract, self)
-                callee_context.currentFormulaMap[param].expressions_with_constraints = arg_exprs
-            else:
-                logger.error(f"Argument {arg} not found in caller context")
+            arg_exprs = self.handleVariableExpr(arg, context)
+            callee_context.currentFormulaMap[param] = FFormula(FStateVar(self.parent_contract, param), self.parent_contract, self)
+            callee_context.currentFormulaMap[param].expressions_with_constraints = arg_exprs
         return
     
 

@@ -7,11 +7,12 @@ from z3 import BitVecVal
 from Function import FFunction
 
 class FContract:
-    def __init__(self, sli_contract:Contract, path:str, name:str):
+    def __init__(self, sli_contract:Contract, path:str, name:str, slith_all=None):
         self.sli_contract = sli_contract
         self.solpath = path
         self.main_name = name
         self._address_this = self.fakeThisAddress()
+        self.slither_all = slith_all
 
 
     # generate a fake address for this contract based on self.parent_contract.main_name&solpath
@@ -45,7 +46,7 @@ def BuildFormula(contract_pairs):
         logger.debug(f"Building formula for contract {main_name} at path {path}")
         slither = Slither(path)
         sli_contract = slither.get_contract_from_name(main_name)[0]
-        fcontract = FContract(sli_contract, path, main_name)
+        fcontract = FContract(sli_contract, path, main_name, slither)
         for func in fcontract.sli_contract.functions:
             # only care about public/external functions
             ffunc = FFunction(func, fcontract)
