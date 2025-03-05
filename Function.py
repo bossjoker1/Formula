@@ -5,6 +5,7 @@ from slither.core.declarations import (
     Contract, 
     SolidityVariable,
     SolidityFunction,
+    Modifier,
 ) 
 from slither.core.cfg.node import NodeType, Node
 from slither.core.variables import (
@@ -423,7 +424,6 @@ class FFunction:
             return
             
 
-    # TODO: how to update context
     def handleBinaryIROp(self, ir:Binary, context:FFuncContext):
         result = ir.lvalue
         # only care about state variables that will be recorded on-chain
@@ -468,6 +468,21 @@ class FFunction:
         return res
     
 
+    def assignSymbolicVal(self, var):
+        formula = None
+
+        if var.type == ElementaryType("uint256"):
+            formula = Int(var.name)
+        elif var.type == ElementaryType("bool"):
+            formula = Bool(var.name)
+        elif var.type == ElementaryType("string"):
+            formula = String(var.name)
+        elif var.type == ElementaryType("address"):
+            formula = BitVec(var.name, 160)
+
+        return formula
+
+
     # TODO: SolidityVariables are not complete.
     def handleVariableExpr(self, var:Variable, context:FFuncContext) -> List[ExpressionWithConstraint]:
         expressions_with_constraints = []
@@ -490,19 +505,19 @@ class FFunction:
                 formula = self.parent_contract.address_this
                 varExpr = ExpressionWithConstraint(formula, context.globalFuncConstraint)
                 expressions_with_constraints.append(varExpr)
-        elif var in context.currentFormulaMap:
-            expressions_with_constraints = context.currentFormulaMap[var].expressions_with_constraints.copy()    
+            else:
+                formula = self.assignSymbolicVal(var)
+                varExpr = ExpressionWithConstraint(formula, context.globalFuncConstraint)
+                expressions_with_constraints.append(varExpr)
+        else:
+            if var in context.currentFormulaMap:
+                expressions_with_constraints = context.currentFormulaMap[var].expressions_with_constraints.copy()    
+            else:
+                fformula = FFormula(FStateVar(self.parent_contract, var), self.parent_contract, self)
+                context.updateContext(var, fformula)
             if len(expressions_with_constraints) == 0:
                 # assigning a symbolic value (with its name)
-                formula = None
-                if var.type == ElementaryType("uint256"):
-                    formula = Int(var.name)
-                elif var.type == ElementaryType("bool"):
-                    formula = Bool(var.name)
-                elif var.type == ElementaryType("string"):
-                    formula = String(var.name)
-                elif var.type == ElementaryType("address"):
-                    formula = BitVec(var.name, 160)
+                formula = self.assignSymbolicVal(var)
                 varExpr = ExpressionWithConstraint(formula, context.globalFuncConstraint)
                 expressions_with_constraints.append(varExpr)
             else:
@@ -522,6 +537,9 @@ class FFunction:
 
     # TODO: uncompleted
     def updateContext_FuncRet(self, caller_context:FFuncContext, callee_context:FFuncContext):
+        # 0. modifier_call
+        if isinstance(callee_context.func, Modifier):
+            caller_context.globalFuncConstraint = simplify(And(caller_context.globalFuncConstraint, callee_context.globalFuncConstraint))
         # 1. update return values
         callerRetVar = caller_context.callerRetVar
         if isinstance(callerRetVar, TemporaryVariable):
@@ -564,6 +582,7 @@ class FFunction:
                     self.addFFormula(FStateVar(self.parent_contract, var), formula)
 
         return False
+    
                           
     # reorder basic blocks(nodes) of function (especially for those have modifiers)
     # pass Context to the son nodes
