@@ -20,6 +20,7 @@ from slither.slithir.variables import (
 )
 from slither.core.solidity_types import (
     ElementaryType,
+    MappingType,
 )
 from slither.slithir.operations import(
     Operation,
@@ -68,22 +69,24 @@ binary_op = {
 # To maintain the context of the function (call context, constraints, etc.)
 class FFuncContext:
     def __init__(self, func:Function, parent_contract:Contract, parent_func:Function=None, caller_node:Node=None):
-        self.currentFormulaMap:Dict[Variable, FFormula] = {}
+        self.currentFormulaMap: Dict[Variable, FFormula] = {}
         self.globalFuncConstraint = True
-        self.refMap:Dict[Variable, Variable] = {}
+        self.refMap: Dict[Variable, Variable] = {}
 
         self.caller_node = caller_node
         # means the rest of irs are tackling with return info, and we should delay to analyze them.
         self.callflag = False
 
-        self.returnIRs:List[Operation] = []
-        self.callerRetVar:Variable = None
+        self.returnIRs: List[Operation] = []
+        self.callerRetVar: Variable = None
         # name: ret_0, ret_1, ...,  ret_i (especially for TupleVariable)
         self.retVarMap: Dict[str, FFormula] = {}
 
         self.func = func
         self.parent_contract = parent_contract
         self.parent_func = parent_func
+
+        self.mapVar2Exp: Dict[Variable, ExprRef] = {}
 
                 
     def updateContext(self, var:Variable, fformula:FFormula):
@@ -120,6 +123,7 @@ class FFuncContext:
         new_context.callerRetVar = self.callerRetVar
         new_context.globalFuncConstraint = self.globalFuncConstraint
         new_context.refMap = {var: ref for var, ref in self.refMap.items()}
+        new_context_mapVar2Exp = {var: exp for var, exp in self.mapVar2Exp.items()}
         return new_context
     
 
@@ -371,14 +375,49 @@ class FFunction:
     def handleIndexIR(self, ir:Index, context:FFuncContext):
         var, idx = ir.variable_left, ir.variable_right
         # logger.debug(f"==== [Index] {var}[{idx}]")
-        ref = ir.lvalue # no need to get points_to, as we can only get _balance when we meet _balance[from]
-        if isinstance(ref, ReferenceVariable):
-            map_var = FMap(var, idx, ref.type)
-            context.refMap[ref] = map_var
-            if map_var not in context.currentFormulaMap:
-                fformula = FFormula(FStateVar(self.parent_contract, map_var), self.parent_contract, self)
-                context.updateContext(map_var, fformula)
+        if isinstance(var.type, MappingType):
+            self.handleMapType(ir, context)
+        else:
+            ref = ir.lvalue # no need to get points_to, as we can only get _balance when we meet _balance[from]
+            if isinstance(ref, ReferenceVariable):
+                map_var = FMap(var, idx, ref.type)
+                context.refMap[ref] = map_var
+                if map_var not in context.currentFormulaMap:
+                    fformula = FFormula(FStateVar(self.parent_contract, map_var), self.parent_contract, self)
+                    context.updateContext(map_var, fformula)
 
+    
+    def handleMapType(self, ir:Index, context:FFuncContext):
+        var, idx = ir.variable_left, ir.variable_right
+        ref = ir.lvalue
+        if isinstance(var.type, MappingType):
+            type_from, type_to = var.type.type_from, var.type.type_to
+            type2type = {
+                ElementaryType("uint256"): IntSort(),
+                ElementaryType("bool"): BoolSort(),
+                ElementaryType("string"): StringSort(),
+                ElementaryType("address"): BitVecSort(160),
+            }
+            map_from, map_to = type2type.get(type_from, IntSort()), type2type.get(type_to, IntSort())
+            
+            if var not in context.mapVar2Exp.keys():
+                MapExp = Array(f"{var.name}", map_from, map_to)
+                context.mapVar2Exp[var] = MapExp
+
+            map_var = FMap(var, idx, ref.type)
+            if isinstance(ref, ReferenceVariable):
+                context.refMap[ref] = map_var
+                if map_var not in context.currentFormulaMap:
+                    fformula = FFormula(FStateVar(self.parent_contract, map_var), self.parent_contract, self)
+                    context.updateContext(map_var, fformula)
+
+            idx_exp = self.handleVariableExpr(idx, context)
+            for exp, cons in idx_exp:
+                select_var = Select(context.mapVar2Exp[var], exp)
+                exp_cons = ExpressionWithConstraint(select_var, simplify(And(cons, context.globalFuncConstraint)))
+                context.currentFormulaMap[map_var].expressions_with_constraints.append(exp_cons)
+            return
+            
 
     # TODO: how to update context
     def handleBinaryIROp(self, ir:Binary, context:FFuncContext):
