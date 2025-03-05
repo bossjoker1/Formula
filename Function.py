@@ -212,7 +212,7 @@ class FFunction:
     def is_terminal_node(self, node:Node) -> bool:
         if node.type in {NodeType.THROW}:
             return False
-        if not node.sons or node.type == NodeType.RETURN:
+        if not node.sons or node.type == NodeType.RETURN or node.type == NodeType.PLACEHOLDER:
             return True
         return False
 
@@ -537,11 +537,14 @@ class FFunction:
                 fformula.expressions_with_constraints = callee_context.retVarMap[ret_idx].expressions_with_constraints.copy()
                 caller_context.updateContext(tuple_var, fformula)
 
+        logger.debug(f"[N] Parent Function: {caller_context.parent_func.canonical_name if caller_context.parent_func else 'None'} \n [N] Current Function <{caller_context.func.canonical_name}> Processing node {caller_context.caller_node}")
         while caller_context.returnIRs:
             ir = caller_context.returnIRs.pop(0)
+            logger.debug(f"----- ir[{type(ir)}] : {ir}")
+            caller_context.callflag = False
             self.analyzeIR(ir, caller_context)
             if caller_context.callflag:
-                return
+                return True
 
         # 2. update state varibles
         for var, formula in callee_context.currentFormulaMap.items():
@@ -560,6 +563,7 @@ class FFunction:
                 if isinstance(var, StateVariable) or (isinstance(var, FMap) and isinstance(var.map, StateVariable)):
                     self.addFFormula(FStateVar(self.parent_contract, var), formula)
 
+        return False
                           
     # reorder basic blocks(nodes) of function (especially for those have modifiers)
     # pass Context to the son nodes
@@ -579,7 +583,10 @@ class FFunction:
                 self.call_stack.pop()
                 # update caller context 
                 if caller_context:
-                    self.updateContext_FuncRet(caller_context, context)
+                    flag = self.updateContext_FuncRet(caller_context, context)
+                    # multi calls in the same Node
+                    if flag:
+                        continue
                     _, current_work_list = self.call_stack[-1]
                     for son in context.caller_node.sons:
                         current_work_list.append((caller_context.copy(), son))
