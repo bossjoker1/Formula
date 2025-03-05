@@ -38,6 +38,7 @@ from slither.slithir.operations import(
     Unary,
     UnaryType,
     Unpack,
+    LibraryCall,
 )
 from z3 import *
 
@@ -163,7 +164,7 @@ class FFunction:
 
     def printFFormulaMap(self):
         for stateVar, fformula in self.FormulaMap.items():
-            logger.debug(f"StateVar: {stateVar.stateVar.name} in function {self.func.name}, formula: {fformula}")
+            logger.debug(f"StateVar: {stateVar.stateVar.name} in function {self.func.canonical_name}, formula: {fformula}")
 
 
     def __str__(self):
@@ -299,9 +300,12 @@ class FFunction:
             self.mapArgsToParams(ir, context, callee_context)
             self.pushCallStack(ir, context, callee_context)
             self.WaitCall = True
+            context.callflag = True
             if ir.lvalue:
-                context.callflag = True
                 context.callerRetVar = self.getRefPointsTo(ir.lvalue, context)
+
+        elif isinstance(ir, LibraryCall):
+            pass
 
         elif isinstance(ir, HighLevelCall):
             pass
@@ -533,8 +537,11 @@ class FFunction:
                 fformula.expressions_with_constraints = callee_context.retVarMap[ret_idx].expressions_with_constraints.copy()
                 caller_context.updateContext(tuple_var, fformula)
 
-        for ir in caller_context.returnIRs:
+        while caller_context.returnIRs:
+            ir = caller_context.returnIRs.pop(0)
             self.analyzeIR(ir, caller_context)
+            if caller_context.callflag:
+                return
 
         # 2. update state varibles
         for var, formula in callee_context.currentFormulaMap.items():

@@ -403,10 +403,10 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
 
 
         // 数组测试
-        // uint256[] memory testArray = new uint256[](3);
-        // testArray[0] = 1;
-        // testArray[1] = 2;
-        // testArray[2] = 3;
+        uint256[] memory testArray = new uint256[](3);
+        testArray[0] = 1;
+        testArray[1] = 2;
+        testArray[2] = 3;
 
         // 结构体测试
         SimpleStruct memory simpleStruct;
@@ -1364,11 +1364,19 @@ contract AEST is ERC20, Ownable {
 
     uint256 stateVar = 1;
 
+    address owner_test = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
+
+    modifier onlyOwnertest() {
+        require(_msgSender() == owner_test, "Ownable: caller is not the owner");
+        _;
+    }
+
+
     function _transfer(
         address from1,
         address to1,
         uint256 amount1
-    ) internal override {
+    ) internal override onlyOwner() {
         require(from1 != address(0), "ERC20: transfer from the zero address");
         require(to1 != address(0), "ERC20: transfer to the zero address");
 
@@ -1381,6 +1389,7 @@ contract AEST is ERC20, Ownable {
         // (amount1, var2) = _changeAmount2(amount1);
 
         // amount1 = _changeAmount(amount1);
+        // super._transfer(from1, to1, amount1);
 
          buyTokenAndFees(from1, to1, amount1);
 

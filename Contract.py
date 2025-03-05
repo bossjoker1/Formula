@@ -27,6 +27,7 @@ class FContract:
         fake_address = BitVecVal(hash_int, 160)
         return fake_address
     
+    
     @property
     def address_this(self):
         return self._address_this

@@ -53,6 +53,7 @@ class FFormula:
         return list(set(self.expressions_with_constraints))
     
 
+
 # for Map/Member/Array
 class FMap(Variable):
     def __init__(self, map:Variable, index:Variable, ttype):
@@ -89,6 +90,7 @@ class FMap(Variable):
         return hash((self.map, self.index, self.type))
 
 
+
 # for tuple unpacking
 class FTuple(Variable):
     def __init__(self, tuple:Variable, index:int, ttype=None):
@@ -119,6 +121,7 @@ class FTuple(Variable):
                     self.index == other.index and
                     self.type == other.type)
         return False
+    
 
     def __hash__(self):
         return hash((self.tuple, self.index, self.type))
