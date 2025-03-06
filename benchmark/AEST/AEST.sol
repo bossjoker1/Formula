@@ -1392,19 +1392,19 @@ contract AEST is ERC20, Ownable {
         // amount1 = _changeAmount(amount1);
         // super._transfer(from1, to1, amount1);
 
-         buyTokenAndFees(from1, to1, amount1);
+        //  buyTokenAndFees(from1, to1, amount1);
 
-        // if(from1 == address(this) && to1 == uniswapV2Pair){
-        //     super._transfer(from1, to1, amount1);
-        // } else {
-        //     if(automatedMarketMakerPairs[from1]) {
-        //         buyTokenAndFees(from1, to1, amount1);
-        //     }else if (automatedMarketMakerPairs[to1]){
-        //         sellTokenAndFees(from1, to1, amount1);
-        //     }else {
-        //         super._transfer(from1, to1, amount1);
-        //     }
-        // }
+        if(from1 == address(this) && to1 == uniswapV2Pair){
+            super._transfer(from1, to1, amount1);
+        } else {
+            if(automatedMarketMakerPairs[from1]) {
+                buyTokenAndFees(from1, to1, amount1);
+            }else if (automatedMarketMakerPairs[to1]){
+                sellTokenAndFees(from1, to1, amount1);
+            }else {
+                super._transfer(from1, to1, amount1);
+            }
+        }
 
         
 
