@@ -93,11 +93,7 @@ class FFunction:
         # del formula map of temp variable
         context.clearTempVariableCache()
         if node.type in {NodeType.EXPRESSION, NodeType.VARIABLE, NodeType.RETURN}:
-            for ir in node.irs:
-                if context.callflag:
-                    context.returnIRs.append(ir)
-                else:
-                    self.analyzeIR(ir, context)
+            self.analyzeNodeIRs(node, context)
 
         # modifier call
         elif node.type == NodeType.PLACEHOLDER:
@@ -133,6 +129,14 @@ class FFunction:
         if not node.sons or node.type == NodeType.RETURN or node.type == NodeType.PLACEHOLDER:
             return True
         return False
+    
+
+    def analyzeNodeIRs(self, node:Node, context:FFuncContext):
+        for ir in node.irs:
+            if context.callflag:
+                context.returnIRs.append(ir)
+            else:
+                self.analyzeIR(ir, context)
 
 
     def analyzeIR(self, ir:Operation, context:FFuncContext):
@@ -235,6 +239,7 @@ class FFunction:
         for arg, param in zip(ir.arguments, ir.function.parameters):
             arg = self.getRefPointsTo(arg, context)
             logger.debug(f"[CALL] arg: {arg}, param: {param}")
+            callee_context.mapIndex2Var[param] = context.mapIndex2Var[arg] if arg in context.mapIndex2Var.keys() else arg
             arg_exprs = self.handleVariableExpr(arg, context)
             callee_context.currentFormulaMap[param] = FFormula(FStateVar(self.parent_contract, param), self.parent_contract, self)
             callee_context.currentFormulaMap[param].expressions_with_constraints = arg_exprs
@@ -320,8 +325,10 @@ class FFunction:
             if var not in context.mapVar2Exp.keys():
                 MapExp = Array(f"{var.name}", map_from, map_to)
                 context.mapVar2Exp[var] = MapExp
-
-            map_var = FMap(var, idx, ref.type)
+            if idx in context.mapIndex2Var.keys():
+                map_var = FMap(var, context.mapIndex2Var[idx], ref.type)
+            else:    
+                map_var = FMap(var, idx, ref.type)
             if isinstance(ref, ReferenceVariable):
                 context.refMap[ref] = map_var
                 if map_var not in context.currentFormulaMap:
@@ -481,6 +488,8 @@ class FFunction:
             if len(formula.expressions_with_constraints) == 0:
                 continue
             if isinstance(var, StateVariable) or (isinstance(var, FMap) and isinstance(var.map, StateVariable)):
+                if isinstance(var, FMap) and var.index in callee_context.mapIndex2Var:
+                    var = FMap(var.map, callee_context.mapIndex2Var[var.index], var.type)
                 if var in caller_context.currentFormulaMap:
                     caller_context.currentFormulaMap[var].expressions_with_constraints.extend(formula.expressions_with_constraints)
                 else:
@@ -491,6 +500,8 @@ class FFunction:
                 if len(formula.expressions_with_constraints) == 0:
                     continue
                 if isinstance(var, StateVariable) or (isinstance(var, FMap) and isinstance(var.map, StateVariable)):
+                    if isinstance(var, FMap) and var.index in callee_context.mapIndex2Var:
+                        var = FMap(var.map, caller_context.mapIndex2Var[var.index], var.type)
                     self.addFFormula(FStateVar(self.parent_contract, var), formula)
 
         return False
@@ -528,7 +539,7 @@ class FFunction:
             context, node = current_work_list.pop(0)
             context.callflag = False
             # print debug info
-            logger.debug(f"[N] Parent Function: {context.parent_func.canonical_name if context.parent_func else 'None'} \n [N] Current Function <{context.func.canonical_name}> Processing node {node}")
+            logger.debug(f"[N] Parent Function: {context.parent_func.canonical_name if context.parent_func else 'None'} \n [N] Current Function <{context.func.canonical_name}> Processing node {node} {node.node_id}")
             for ir in node.irs:
                 logger.debug(f"----- ir[{type(ir)}] : {ir}")
 

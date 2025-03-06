@@ -60,8 +60,9 @@ class FFuncContext:
         self.func = func
         self.parent_contract = parent_contract
         self.parent_func = parent_func
-
+        # for Map and Array, ...
         self.mapVar2Exp: Dict[Variable, ExprRef] = {}
+        self.mapIndex2Var: Dict[Variable, Variable] = {}
 
                 
     def updateContext(self, var:Variable, fformula:FFormula):
@@ -106,5 +107,6 @@ class FFuncContext:
         new_context.globalFuncConstraint = self.globalFuncConstraint
         new_context.refMap = {var: ref for var, ref in self.refMap.items()}
         new_context.mapVar2Exp = {var: exp for var, exp in self.mapVar2Exp.items()}
+        new_context.mapIndex2Var = {var: index_var for var, index_var in self.mapIndex2Var.items()}
         return new_context
     
