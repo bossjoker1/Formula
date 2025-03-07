@@ -62,6 +62,8 @@ class FFuncContext:
         self.parent_func = parent_func
         # for Map and Array, ...
         self.mapVar2Exp: Dict[Variable, ExprRef] = {}
+        # map the params to the original args
+        # e.g., from1 -> from -> account
         self.mapIndex2Var: Dict[Variable, Variable] = {}
 
                 

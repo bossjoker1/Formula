@@ -43,9 +43,9 @@ class FFormula:
     
 
     def __str__(self):
-        result = ""
-        for expr_with_constraint in list(set(self.expressions_with_constraints)):
-            result += f"Expression: {expr_with_constraint.expression}, Constraint: {expr_with_constraint.constraint}"
+        result = "\n"
+        for idx, expr_with_constraint in enumerate(list(set(self.expressions_with_constraints))):
+            result += f"Expression [{idx}]: {expr_with_constraint.expression}, \nConstraint [{idx}]: {expr_with_constraint.constraint}\n"
         return result
     
 

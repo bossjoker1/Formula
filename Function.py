@@ -506,6 +506,12 @@ class FFunction:
 
         return False
     
+
+    def printNodeInfo(self, context:FFuncContext, node:Node):
+        logger.debug(f"[N] Parent Function: {context.parent_func.canonical_name if context.parent_func else 'None'} \n [N] Current Function <{context.func.canonical_name}> Processing node {node} {node.node_id}")
+        for ir in node.irs:
+            logger.debug(f"----- ir[{type(ir)}] : {ir}") 
+    
                           
     # reorder basic blocks(nodes) of function (especially for those have modifiers)
     # pass Context to the son nodes
@@ -539,9 +545,7 @@ class FFunction:
             context, node = current_work_list.pop(0)
             context.callflag = False
             # print debug info
-            logger.debug(f"[N] Parent Function: {context.parent_func.canonical_name if context.parent_func else 'None'} \n [N] Current Function <{context.func.canonical_name}> Processing node {node} {node.node_id}")
-            for ir in node.irs:
-                logger.debug(f"----- ir[{type(ir)}] : {ir}")
+            self.printNodeInfo(context, node)
 
             self.analyzeNode(node, context)
 
