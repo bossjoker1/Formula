@@ -1363,7 +1363,7 @@ contract AEST is ERC20, Ownable {
         emit SetAutomatedMarketMakerPair(pair, value);
     }
 
-    uint256 stateVar = 1;
+    
 
     address owner_test = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
 
@@ -1371,6 +1371,35 @@ contract AEST is ERC20, Ownable {
         require(_msgSender() == owner_test, "Ownable: caller is not the owner");
         _;
     }
+
+    bool flag;
+
+    uint256 stateVar = 1;
+
+    uint256 stateVar_res;
+
+    bool flag_two;
+
+    function conTest() public onlyOwnertest {
+        if (flag) {
+            stateVar = 10000;
+        } else {
+            stateVar = 22222;
+        }
+
+        if (stateVar > 10000) {
+            stateVar_res = 10000;
+        } else {
+            stateVar_res = 20000;
+        }
+
+        if (flag_two){
+            stateVar += 99;
+        }else{
+            stateVar += 88;
+        }
+    }
+
 
     // aset-transfer
     function _transfer(
