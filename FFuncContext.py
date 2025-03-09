@@ -65,6 +65,8 @@ class FFuncContext:
         # map the params to the original args
         # e.g., from1 -> from -> account
         self.mapIndex2Var: Dict[Variable, Variable] = {}
+        # node path
+        self.node_path = []
 
                 
     def updateContext(self, var:Variable, fformula:FFormula):
@@ -110,5 +112,6 @@ class FFuncContext:
         new_context.refMap = {var: ref for var, ref in self.refMap.items()}
         new_context.mapVar2Exp = {var: exp for var, exp in self.mapVar2Exp.items()}
         new_context.mapIndex2Var = {var: index_var for var, index_var in self.mapIndex2Var.items()}
+        new_context.node_path = self.node_path.copy()
         return new_context
     

@@ -43,7 +43,8 @@ from slither.slithir.operations import(
     Condition,
 )
 from z3 import *
-from FFormula import FFormula, FStateVar, ExpressionWithConstraint, FMap, FTuple
+from FFormula import FFormula, FStateVar, ExpressionWithConstraint
+from FType import FMap, FTuple
 from FFuncContext import FFuncContext, binary_op
 
 
@@ -525,6 +526,7 @@ class FFunction:
     # pass Context to the son nodes
     def buildCFG(self):
         context = FFuncContext(func=self.func, parent_contract=self.parent_contract.sli_contract)
+        context.node_path.append(self.func.entry_point)
         self.buildFFormulaMap(context)
         self.call_stack = []
         work_list = [(context, self.func.entry_point)]
@@ -545,7 +547,9 @@ class FFunction:
                         continue
                     _, current_work_list = self.call_stack[-1]
                     for son in context.caller_node.sons:
-                        current_work_list.append((caller_context.copy(), son))
+                        new_context = caller_context.copy()
+                        new_context.node_path.append(son)
+                        current_work_list.append((new_context, son))
                     # need to update
                     context = caller_context
                 continue
@@ -559,6 +563,8 @@ class FFunction:
 
             if not self.WaitCall:
                 for son in node.sons:
-                    current_work_list.append((context.copy(), son))
+                    new_context = context.copy()
+                    new_context.node_path.append(son)
+                    current_work_list.append((new_context, son))
             
                         

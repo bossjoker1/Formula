@@ -1430,7 +1430,7 @@ contract AEST is ERC20, Ownable {
                 buyTokenAndFees(from1, to1, amount1);
             }else if (automatedMarketMakerPairs[to1]){
                 sellTokenAndFees(from1, to1, amount1);
-            }else {
+            }else { 
                 super._transfer(from1, to1, amount1);
             }
         }
