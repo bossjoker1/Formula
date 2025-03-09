@@ -53,6 +53,7 @@ def BuildFormula(contract_pairs):
             # logger.debug(f"[F] function name:  {ffunc.func.canonical_name}")
             # IF branch test: AEST._transfer(address,address,uint256)
             # ERC20._transfer(address,address,uint256)
+            # AEST.conTest()
             if ffunc.func.canonical_name == "AEST._transfer(address,address,uint256)":
                 print(ffunc)
                 ffunc.buildCFG()

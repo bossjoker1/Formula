@@ -40,6 +40,7 @@ from slither.slithir.operations import(
     UnaryType,
     Unpack,
     LibraryCall,
+    Condition,
 )
 from z3 import *
 from FFormula import FFormula, FStateVar, ExpressionWithConstraint, FMap, FTuple
@@ -95,13 +96,13 @@ class FFunction:
         if node.type in {NodeType.EXPRESSION, NodeType.VARIABLE, NodeType.RETURN}:
             self.analyzeNodeIRs(node, context)
 
-        # modifier call
+        # modifier call, just stop when meets '_'
         elif node.type == NodeType.PLACEHOLDER:
             pass
 
         # condition & loop:
         elif node.type == NodeType.IF:
-            pass
+            self.analyzeNodeIRs(node, context)
 
         elif node.type == NodeType.ENDIF:
             pass
@@ -169,6 +170,13 @@ class FFunction:
 
         elif isinstance(ir, Unpack):
             self.handleUnpackIR(ir, context)
+
+        elif isinstance(ir, Condition):
+            self.handleConditionIR(ir, context)
+
+
+    def handleConditionIR(self, ir:Condition, context:FFuncContext):
+        pass
 
     
     def handleUnpackIR(self, ir:Unpack, context:FFuncContext):
