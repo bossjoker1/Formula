@@ -48,6 +48,7 @@ class FFuncContext:
         # tracing nested if-else
         self.condition_stack = []
         self.branch_cond = BoolVal(True)
+        self.cond_expr_if = BoolVal(True)
 
     
     def push_cond(self, conditon:ExprRef, true_or_false:bool):
@@ -114,6 +115,7 @@ class FFuncContext:
         new_context.mapIndex2Var = {var: index_var for var, index_var in self.mapIndex2Var.items()}
         new_context.node_path = self.node_path.copy()
         new_context.condition_stack = self.condition_stack.copy()
-        new_context.current_branch_condition = self.branch_cond
+        new_context.branch_cond = self.branch_cond
+        new_context.cond_expr_if = self.cond_expr_if
         return new_context
     

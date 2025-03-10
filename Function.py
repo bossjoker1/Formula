@@ -180,9 +180,9 @@ class FFunction:
         cond = self.getRefPointsTo(ir.value, context)
         cond_expr = self.handleVariableExpr(cond, context)
         cond_expr_if = Reconstruct_If(cond_expr)
+        context.cond_expr_if = simplify(cond_expr_if)
         
 
-    
     def handleUnpackIR(self, ir:Unpack, context:FFuncContext):
         lvalue = self.getRefPointsTo(ir.lvalue, context)
         tuple_var = FTuple(ir.tuple, ir.index, ir.tuple.type[ir.index])
@@ -220,7 +220,7 @@ class FFunction:
                 if is_false(temp_res):
                     continue
                 temp_res_list.append(ExpressionWithConstraint(expression=BoolVal(True), constraint=temp_res))     
-            context.globalFuncConstraint = Reconstruct_If(temp_res_list)
+            context.globalFuncConstraint = simplify(Reconstruct_If(temp_res_list))
             # if globalFuncConstraint is still false(can be infer directly), discard the following nodes
             if is_false(context.globalFuncConstraint):
                 return
@@ -233,7 +233,8 @@ class FFunction:
                 pass
             callee_func = FFunction(ir.function, self.parent_contract)
             callee_context = FFuncContext(func=ir.function, parent_contract=self.parent_contract, parent_func=context.func, caller_node=ir.node)
-            callee_context.globalFuncConstraint = context.globalFuncConstraint
+            # shoud AND if_cond when calling 
+            callee_context.globalFuncConstraint = simplify(And(context.globalFuncConstraint, context.branch_cond))
             callee_func.buildFFormulaMap(callee_context)
             # map args to params
             self.mapArgsToParams(ir, context, callee_context)
@@ -294,7 +295,8 @@ class FFunction:
         rexp = self.handleVariableExpr(rvalue, context)
         # directly override
         context.currentFormulaMap[lvalue].expressions_with_constraints = rexp
-
+        return
+    
 
     def handleMemberIR(self, ir:Member, context:FFuncContext):
         var, field = ir.variable_left, ir.variable_right
@@ -306,6 +308,7 @@ class FFunction:
             if member_var not in context.currentFormulaMap:
                 fformula = FFormula(FStateVar(self.parent_contract, member_var), self.parent_contract, self)
                 context.updateContext(member_var, fformula)
+        return
 
 
     def handleIndexIR(self, ir:Index, context:FFuncContext):
@@ -321,6 +324,7 @@ class FFunction:
                 if map_var not in context.currentFormulaMap:
                     fformula = FFormula(FStateVar(self.parent_contract, map_var), self.parent_contract, self)
                     context.updateContext(map_var, fformula)
+        return
 
     
     def handleMapType(self, ir:Index, context:FFuncContext):
@@ -383,6 +387,7 @@ class FFunction:
                 context.currentFormulaMap[result].expressions_with_constraints = merged_exprs
             else:
                 logger.error(f"no such local/params variable {result.name} in context")
+        return
     
 
     def mergeExpWithConstraints(self, lexp:List[ExpressionWithConstraint], rexp:List[ExpressionWithConstraint], op:Any) -> List[ExpressionWithConstraint]:
@@ -419,6 +424,7 @@ class FFunction:
     # TODO: SolidityVariables are not complete.
     def handleVariableExpr(self, var:Variable, context:FFuncContext) -> List[ExpressionWithConstraint]:
         expressions_with_constraints = []
+        combine_if_cons = simplify(And(context.globalFuncConstraint, context.branch_cond))
         # handle Constant
         if isinstance(var, Constant):
             # logger.debug(f"==== [V] {var.name}, {var.type}, {var.value}")
@@ -431,16 +437,16 @@ class FFunction:
                 formula = StringVal(var.value)
             elif var.type == ElementaryType("address"):
                 formula = BitVecVal(var.value, 160)
-            varExpr = ExpressionWithConstraint(formula, context.globalFuncConstraint)
+            varExpr = ExpressionWithConstraint(formula, combine_if_cons)
             expressions_with_constraints.append(varExpr)
         elif isinstance(var, SolidityVariable):
             if var.name == "this":
                 formula = self.parent_contract.address_this
-                varExpr = ExpressionWithConstraint(formula, context.globalFuncConstraint)
+                varExpr = ExpressionWithConstraint(formula, combine_if_cons)
                 expressions_with_constraints.append(varExpr)
             else:
                 formula = self.assignSymbolicVal(var)
-                varExpr = ExpressionWithConstraint(formula, context.globalFuncConstraint)
+                varExpr = ExpressionWithConstraint(formula, combine_if_cons)
                 expressions_with_constraints.append(varExpr)
         else:
             if var in context.currentFormulaMap:
@@ -451,11 +457,11 @@ class FFunction:
             if len(expressions_with_constraints) == 0:
                 # assigning a symbolic value (with its name)
                 formula = self.assignSymbolicVal(var)
-                varExpr = ExpressionWithConstraint(formula, context.globalFuncConstraint)
+                varExpr = ExpressionWithConstraint(formula, combine_if_cons)
                 expressions_with_constraints.append(varExpr)
             else:
                 for _, cons in context.currentFormulaMap[var].expressions_with_constraints:
-                    cons = simplify(And(cons, context.globalFuncConstraint))
+                    cons = simplify(And(cons, combine_if_cons))
 
         return expressions_with_constraints
          
@@ -471,8 +477,8 @@ class FFunction:
     # TODO: uncompleted
     def updateContext_FuncRet(self, caller_context:FFuncContext, callee_context:FFuncContext):
         # 0. modifier_call
-        if isinstance(callee_context.func, Modifier):
-            caller_context.globalFuncConstraint = simplify(And(caller_context.globalFuncConstraint, callee_context.globalFuncConstraint))
+        # if isinstance(callee_context.func, Modifier):
+        caller_context.globalFuncConstraint = simplify(And(And(caller_context.globalFuncConstraint, callee_context.globalFuncConstraint), callee_context.branch_cond))
         # 1. update return values
         callerRetVar = caller_context.callerRetVar
         if isinstance(callerRetVar, TemporaryVariable):
@@ -551,10 +557,10 @@ class FFunction:
                     if flag:
                         continue
                     _, current_work_list = self.call_stack[-1]
-                    for son in context.caller_node.sons:
-                        new_context = caller_context.copy()
-                        new_context.node_path.append(son)
-                        current_work_list.append((new_context, son))
+                    if context.caller_node.type == NodeType.IF:
+                        process_if_node(caller_context, context.caller_node, current_work_list)
+                    else:
+                        process_general_node(caller_context, context.caller_node, current_work_list)
                     # need to update
                     context = caller_context
                 continue
@@ -566,10 +572,38 @@ class FFunction:
 
             self.analyzeNode(node, context)
 
-            if not self.WaitCall:
-                for son in node.sons:
-                    new_context = context.copy()
-                    new_context.node_path.append(son)
-                    current_work_list.append((new_context, son))
+            if self.WaitCall:
+                continue
+
+            if node.type == NodeType.IF:
+                process_if_node(context, node, current_work_list)
+            elif node.type == NodeType.PLACEHOLDER:
+                current_work_list.clear()
+            else:
+                process_general_node(context, node, current_work_list)
+
+        return
             
-                        
+# =======================================================================================================
+def process_if_node(context, node, work_list):
+    true_son, false_son = node.son_true, node.son_false
+    true_context, false_context = context.copy(), context.copy()
+
+    true_context.node_path.append(true_son)
+    true_context.push_cond(context.cond_expr_if, True)
+    if not is_false(simplify(And(true_context.globalFuncConstraint, true_context.branch_cond))):
+        work_list.append((true_context, true_son))
+
+    false_context.node_path.append(false_son)
+    false_context.push_cond(context.cond_expr_if, False)
+    if not is_false(simplify(And(false_context.globalFuncConstraint, false_context.branch_cond))):
+        work_list.append((false_context, false_son))
+
+
+def process_general_node(context, node, work_list):
+    for son in node.sons:
+        new_context = context.copy()
+        new_context.node_path.append(son)
+        if node.type == NodeType.ENDIF:
+            new_context.pop_cond()
+        work_list.append((new_context, son))
