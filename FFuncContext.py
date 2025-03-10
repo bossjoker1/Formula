@@ -18,29 +18,6 @@ from z3 import *
 from FFormula import FFormula
 
 
-binary_op = {
-            BinaryType.ADDITION: lambda x, y: x + y,
-            BinaryType.SUBTRACTION: lambda x, y: x - y,
-            BinaryType.MULTIPLICATION: lambda x, y: x * y,
-            BinaryType.DIVISION: lambda x, y: x / y,
-            BinaryType.MODULO: lambda x, y: x % y,
-            BinaryType.EQUAL: lambda x, y: x == y,
-            BinaryType.NOT_EQUAL: lambda x, y: x != y,
-            BinaryType.LESS: lambda x, y: x < y,
-            BinaryType.LESS_EQUAL: lambda x, y: x <= y,
-            BinaryType.GREATER: lambda x, y: x > y,
-            BinaryType.GREATER_EQUAL: lambda x, y: x >= y,
-            BinaryType.ANDAND: lambda x, y: And(x, y),
-            BinaryType.OROR: lambda x, y: Or(x, y),
-            BinaryType.AND: lambda x, y: x & y,
-            BinaryType.OR: lambda x, y: x | y,
-            BinaryType.CARET: lambda x, y: x ^ y,
-            BinaryType.LEFT_SHIFT: lambda x, y: x << y,
-            BinaryType.RIGHT_SHIFT: lambda x, y: LShR(x, y),
-            BinaryType.POWER: lambda x, y: x ** y
-        }
-
-
 # To maintain the context of the function (call context, constraints, etc.)
 class FFuncContext:
     def __init__(self, func:Function, parent_contract:Contract, parent_func:Function=None, caller_node:Node=None):
@@ -67,8 +44,31 @@ class FFuncContext:
         self.mapIndex2Var: Dict[Variable, Variable] = {}
         # node path
         self.node_path = []
+        # conditional jump
+        # tracing nested if-else
+        self.condition_stack = []
+        self.branch_cond = BoolVal(True)
 
-                
+    
+    def push_cond(self, conditon:ExprRef, true_or_false:bool):
+        actual_cond = conditon if true_or_false else Not(conditon)
+        self.condition_stack.append(actual_cond)
+        self.update_branch_cond()
+
+
+    def pop_cond(self):
+        if self.condition_stack:
+            self.condition_stack.pop()
+            self.update_branch_cond()
+
+    
+    def update_branch_cond(self):
+        if not self.condition_stack:
+            self.branch_cond = BoolVal(True)
+        else:
+            self.branch_cond = simplify(And(*self.condition_stack))
+
+      
     def updateContext(self, var:Variable, fformula:FFormula):
         # need to polish
         self.currentFormulaMap[var] = fformula
@@ -113,5 +113,7 @@ class FFuncContext:
         new_context.mapVar2Exp = {var: exp for var, exp in self.mapVar2Exp.items()}
         new_context.mapIndex2Var = {var: index_var for var, index_var in self.mapIndex2Var.items()}
         new_context.node_path = self.node_path.copy()
+        new_context.condition_stack = self.condition_stack.copy()
+        new_context.current_branch_condition = self.branch_cond
         return new_context
     

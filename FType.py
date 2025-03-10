@@ -1,6 +1,35 @@
 # for Map/Member/Array
 from typing import NamedTuple, List, Any, Union, Optional
 from slither.core.variables import StateVariable, Variable
+from slither.slithir.operations import(
+    Operation,
+    BinaryType,
+)
+from z3 import *
+
+
+BINARY_OP = {
+            BinaryType.ADDITION: lambda x, y: x + y,
+            BinaryType.SUBTRACTION: lambda x, y: x - y,
+            BinaryType.MULTIPLICATION: lambda x, y: x * y,
+            BinaryType.DIVISION: lambda x, y: x / y,
+            BinaryType.MODULO: lambda x, y: x % y,
+            BinaryType.EQUAL: lambda x, y: x == y,
+            BinaryType.NOT_EQUAL: lambda x, y: x != y,
+            BinaryType.LESS: lambda x, y: x < y,
+            BinaryType.LESS_EQUAL: lambda x, y: x <= y,
+            BinaryType.GREATER: lambda x, y: x > y,
+            BinaryType.GREATER_EQUAL: lambda x, y: x >= y,
+            BinaryType.ANDAND: lambda x, y: And(x, y),
+            BinaryType.OROR: lambda x, y: Or(x, y),
+            BinaryType.AND: lambda x, y: x & y,
+            BinaryType.OR: lambda x, y: x | y,
+            BinaryType.CARET: lambda x, y: x ^ y,
+            BinaryType.LEFT_SHIFT: lambda x, y: x << y,
+            BinaryType.RIGHT_SHIFT: lambda x, y: LShR(x, y),
+            BinaryType.POWER: lambda x, y: x ** y
+        }
+
 
 class FMap(Variable):
     def __init__(self, map:Variable, index:Variable, ttype):
@@ -72,3 +101,5 @@ class FTuple(Variable):
 
     def __hash__(self):
         return hash((self.tuple, self.index, self.type))
+    
+    

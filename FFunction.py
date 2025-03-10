@@ -43,9 +43,18 @@ from slither.slithir.operations import(
     Condition,
 )
 from z3 import *
-from FFormula import FFormula, FStateVar, ExpressionWithConstraint, Reconstruct_If
-from FType import FMap, FTuple, BINARY_OP
-from FFuncContext import FFuncContext 
+from FFormula import (
+    FFormula,
+    FStateVar, 
+    ExpressionWithConstraint, 
+    Formula, 
+    NONE_FORMULA,
+    MergeAndRefineExp,
+    Reconstruct_If,
+    Expand_If
+)
+from FType import FMap, FTuple
+from FFuncContext import FFuncContext, binary_op
 
 
 class FFunction:
@@ -56,7 +65,7 @@ class FFunction:
         # all state variables written in this function
         self.stateVarWrite = self.func.state_variables_written
         self.highlevelCalls = self.func.all_high_level_calls
-        self.FormulaMap:Dict[FStateVar, FFormula] = {}
+        self.FormulaMap:Dict[FStateVar, Formula] = {}
         self.WaitCall = False
 
     
@@ -64,22 +73,22 @@ class FFunction:
     def buildFFormulaMap(self, context:FFuncContext):
         for stateVar in self.stateVarWrite:
             fstateVar = FStateVar(self.parent_contract, stateVar)
-            formula = FFormula(fstateVar, self.parent_contract, self)
+            formula = Formula(fstateVar, self.parent_contract, self)
             self.FormulaMap[fstateVar] = formula
             context.updateContext(stateVar, formula)
         for params in self.func.parameters:
-            formula = FFormula(FStateVar(self.parent_contract, params), self.parent_contract, self)
+            formula = Formula(FStateVar(self.parent_contract, params), self.parent_contract, self)
             context.updateContext(params, formula)
         for localVar in self.func.local_variables:
-            formula = FFormula(FStateVar(self.parent_contract, localVar), self.parent_contract, self)
+            formula = Formula(FStateVar(self.parent_contract, localVar), self.parent_contract, self)
             context.updateContext(localVar, formula)
 
 
-    def addFFormula(self, stateVar:FStateVar, fformula:FFormula=None):
+    def addFFormula(self, stateVar:FStateVar, fformula:Formula=None):
         if stateVar in self.FormulaMap:
-            self.FormulaMap[stateVar].expressions_with_constraints.extend(fformula.expressions_with_constraints)
+            self.FormulaMap[stateVar].expressions_with_constraints = MergeAndRefineExp(self.FormulaMap[stateVar].expressions_with_constraints, fformula.expressions_with_constraints)
         else:
-            self.FormulaMap[stateVar] = fformula
+            self.FormulaMap[stateVar] = Formula
 
 
     def printFFormulaMap(self):
@@ -177,10 +186,7 @@ class FFunction:
 
 
     def handleConditionIR(self, ir:Condition, context:FFuncContext):
-        cond = self.getRefPointsTo(ir.value, context)
-        cond_expr = self.handleVariableExpr(cond, context)
-        cond_expr_if = Reconstruct_If(cond_expr)
-        
+        pass
 
     
     def handleUnpackIR(self, ir:Unpack, context:FFuncContext):
@@ -214,13 +220,11 @@ class FFunction:
             SolidityFunction("require(bool)")]: 
             bool_var = ir.arguments[0]
             assert bool_var in context.currentFormulaMap.keys()
-            temp_res_list = []
             for exp in context.currentFormulaMap[bool_var].expressions_with_constraints:
                 temp_res = simplify(And(And(exp.expression, exp.constraint), context.globalFuncConstraint))
                 if is_false(temp_res):
                     continue
-                temp_res_list.append(ExpressionWithConstraint(expression=BoolVal(True), constraint=temp_res))     
-            context.globalFuncConstraint = Reconstruct_If(temp_res_list)
+                context.globalFuncConstraint = temp_res
             # if globalFuncConstraint is still false(can be infer directly), discard the following nodes
             if is_false(context.globalFuncConstraint):
                 return
@@ -364,7 +368,7 @@ class FFunction:
         left, right = self.getRefPointsTo(ir.variable_left, context), self.getRefPointsTo(ir.variable_right, context)
         lexp, rexp = self.handleVariableExpr(left, context), self.handleVariableExpr(right, context)
         # handle operation
-        merged_exprs = self.mergeExpWithConstraints(lexp, rexp, BINARY_OP[ir.type])
+        merged_exprs = self.mergeExpWithConstraints(lexp, rexp, binary_op[ir.type])
         if isinstance(result, StateVariable):
             '''
             I think only in ret expr, it needs to be added(or updated) in FormulaMap, 
