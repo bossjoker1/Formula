@@ -96,13 +96,6 @@ class FFuncContext:
         self.refMap.clear()
 
 
-    def check_constraint(self, cons) -> bool:
-        solver = Solver()
-        solver.add(cons)
-        res = solver.check()
-        return res == sat
-
-
     def copy(self):
         new_context = FFuncContext(self.func, self.parent_contract, self.parent_func, self.caller_node)
         new_context.currentFormulaMap = {var: fformula.copy() for var, fformula in self.currentFormulaMap.items()}

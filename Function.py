@@ -43,7 +43,7 @@ from slither.slithir.operations import(
     Condition,
 )
 from z3 import *
-from FFormula import FFormula, FStateVar, ExpressionWithConstraint, Reconstruct_If
+from FFormula import FFormula, FStateVar, ExpressionWithConstraint, Reconstruct_If, Check_constraint
 from FType import FMap, FTuple, BINARY_OP
 from FFuncContext import FFuncContext 
 
@@ -217,12 +217,12 @@ class FFunction:
             temp_res_list = []
             for exp in context.currentFormulaMap[bool_var].expressions_with_constraints:
                 temp_res = simplify(And(And(exp.expression, exp.constraint), context.globalFuncConstraint))
-                if is_false(temp_res):
+                if not Check_constraint(temp_res):
                     continue
                 temp_res_list.append(ExpressionWithConstraint(expression=BoolVal(True), constraint=temp_res))     
             context.globalFuncConstraint = simplify(Reconstruct_If(temp_res_list))
             # if globalFuncConstraint is still false(can be infer directly), discard the following nodes
-            if is_false(context.globalFuncConstraint):
+            if not Check_constraint(context.globalFuncConstraint):
                 return
             
         elif isinstance(ir, InternalCall) or isinstance(ir, HighLevelCall):
@@ -399,7 +399,7 @@ class FFunction:
             if combined_expr == None:
                 logger.error(f"Error in merging expressions: {litem.expression} and {ritem.expression}")
             combined_constraint = simplify(And(litem.constraint, ritem.constraint))
-            if is_false(combined_constraint):
+            if not Check_constraint(combined_constraint):
                 continue
             res.append(ExpressionWithConstraint(combined_expr, combined_constraint))
 
@@ -591,12 +591,12 @@ def process_if_node(context, node, work_list):
 
     true_context.node_path.append(true_son)
     true_context.push_cond(context.cond_expr_if, True)
-    if not is_false(simplify(And(true_context.globalFuncConstraint, true_context.branch_cond))):
+    if Check_constraint(simplify(And(true_context.globalFuncConstraint, true_context.branch_cond))):
         work_list.append((true_context, true_son))
 
     false_context.node_path.append(false_son)
     false_context.push_cond(context.cond_expr_if, False)
-    if not is_false(simplify(And(false_context.globalFuncConstraint, false_context.branch_cond))):
+    if Check_constraint(simplify(And(false_context.globalFuncConstraint, false_context.branch_cond))):
         work_list.append((false_context, false_son))
 
 

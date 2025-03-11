@@ -50,6 +50,14 @@ class FFormula:
 
 # ==============================================================================================================
 # export functions:
+
+def Check_constraint(cons) -> bool:
+    solver = Solver()
+    solver.add(cons)
+    res = solver.check()
+    return res == sat
+
+
 def Reconstruct_If(exprs_with_constraints: List[ExpressionWithConstraint]) -> Optional[ExprRef]:
         if not exprs_with_constraints:
             return None
