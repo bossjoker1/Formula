@@ -115,13 +115,18 @@ class FFunction:
             pass
 
         # callee function's modification on state variables will be handled when it returns
-        if self.is_terminal_node(node) and not self.WaitCall and not context.parent_func:
-            for var, formula in context.currentFormulaMap.items():
-                if len(formula.expressions_with_constraints) == 0:
-                    continue
-                if isinstance(var, StateVariable) or (isinstance(var, FMap) and isinstance(var.map, StateVariable)):
-                    self.addFFormula(FStateVar(self.parent_contract, var), formula)
-
+        if self.is_terminal_node(node):
+            if not self.WaitCall and not context.parent_func:
+                for var, formula in context.currentFormulaMap.items():
+                    if len(formula.expressions_with_constraints) == 0:
+                        continue
+                    if isinstance(var, StateVariable) or (isinstance(var, FMap) and isinstance(var.map, StateVariable)):
+                        self.addFFormula(FStateVar(self.parent_contract, var), formula)
+            else:
+                for var, formula in context.currentFormulaMap.items():
+                    if len(formula.expressions_with_constraints) == 0:
+                        continue
+                    context.mergeFormula(var, formula)         
         return
     
     
@@ -135,6 +140,8 @@ class FFunction:
 
     def analyzeNodeIRs(self, node:Node, context:FFuncContext):
         for ir in node.irs:
+            if context.stop:
+                break
             if context.callflag:
                 context.returnIRs.append(ir)
             else:
@@ -209,21 +216,32 @@ class FFunction:
         # tackle with different kinds of call
 
         # especially for require
-        if isinstance(ir, SolidityCall) and ir.function in [
+        if isinstance(ir, SolidityCall):
+            
+            if ir.function in [
             SolidityFunction("require(bool,string)"), 
-            SolidityFunction("require(bool)")]: 
-            bool_var = ir.arguments[0]
-            assert bool_var in context.currentFormulaMap.keys()
-            temp_res_list = []
-            for exp in context.currentFormulaMap[bool_var].expressions_with_constraints:
-                temp_res = simplify(And(And(exp.expression, exp.constraint), context.globalFuncConstraint))
-                if not Check_constraint(temp_res):
-                    continue
-                temp_res_list.append(ExpressionWithConstraint(expression=BoolVal(True), constraint=temp_res))     
-            context.globalFuncConstraint = simplify(Reconstruct_If(temp_res_list))
-            # if globalFuncConstraint is still false(can be infer directly), discard the following nodes
-            if not Check_constraint(context.globalFuncConstraint):
-                return
+            SolidityFunction("require(bool)"),
+            SolidityFunction("require(bool,error)"),
+            SolidityFunction("assert(bool)")
+            ]: 
+                bool_var = ir.arguments[0]
+                assert bool_var in context.currentFormulaMap.keys()
+                temp_res_list = []
+                for exp in context.currentFormulaMap[bool_var].expressions_with_constraints:
+                    temp_res = simplify(And(And(exp.expression, exp.constraint), context.globalFuncConstraint))
+                    if not Check_constraint(temp_res):
+                        continue
+                    temp_res_list.append(ExpressionWithConstraint(expression=BoolVal(True), constraint=temp_res))    
+                context.globalFuncConstraint = simplify(Reconstruct_If(temp_res_list) if len(temp_res_list)!=0 else BoolVal(False))
+                # if globalFuncConstraint is still false(can be infer directly), discard the following nodes
+                if not Check_constraint(context.globalFuncConstraint):
+                    context.stop = True
+                
+            elif ir.function in [
+                SolidityFunction("revert()"),
+                SolidityFunction("revert(string)"),
+            ]:
+                context.stop = True
             
         elif isinstance(ir, InternalCall) or isinstance(ir, HighLevelCall):
             # if ir.is_modifier_call:
@@ -445,6 +463,7 @@ class FFunction:
                 varExpr = ExpressionWithConstraint(formula, combine_if_cons)
                 expressions_with_constraints.append(varExpr)
             else:
+                # | msg.sender | msg.value | block.timestamp | block.number | block.coinbase | 
                 formula = self.assignSymbolicVal(var)
                 varExpr = ExpressionWithConstraint(formula, combine_if_cons)
                 expressions_with_constraints.append(varExpr)
@@ -504,7 +523,7 @@ class FFunction:
                 return True
 
         # 2. update state varibles
-        for var, formula in callee_context.currentFormulaMap.items():
+        for var, formula in callee_context.mergeFormulas.items():
             if len(formula.expressions_with_constraints) == 0:
                 continue
             if isinstance(var, StateVariable) or (isinstance(var, FMap) and isinstance(var.map, StateVariable)):
@@ -572,7 +591,7 @@ class FFunction:
 
             self.analyzeNode(node, context)
 
-            if self.WaitCall:
+            if self.WaitCall or context.stop:
                 continue
 
             if node.type == NodeType.IF:

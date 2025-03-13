@@ -1387,7 +1387,7 @@ contract AEST is ERC20, Ownable {
 
     bool flag_two;
 
-    function conTest() public onlyOwnertest {
+    function conTest() public  {
         if (flag) {
             stateVar = 10000;
         } else {
@@ -1413,7 +1413,7 @@ contract AEST is ERC20, Ownable {
         address from1,
         address to1,
         uint256 amount1
-    ) internal override ifOwnertest() {
+    ) internal override  ifOwnertest(){
         require(from1 != address(0), "ERC20: transfer from the zero address");
         require(to1 != address(0), "ERC20: transfer to the zero address");
 
@@ -1435,14 +1435,15 @@ contract AEST is ERC20, Ownable {
         } else {
             if(automatedMarketMakerPairs[from1]) {
                 buyTokenAndFees(from1, to1, amount1);
-            // }else if (automatedMarketMakerPairs[to1]){
-            //     sellTokenAndFees(from1, to1, amount1);
-            // }else { 
-            //     super._transfer(from1, to1, amount1);
-            // }
+            }else if (automatedMarketMakerPairs[to1]){
+                sellTokenAndFees(from1, to1, amount1);
+            }else { 
+                super._transfer(from1, to1, amount1);
             }
-        }
 
+        }
+        
+        // conTest();
         
 
         // amount1 = stateVar;

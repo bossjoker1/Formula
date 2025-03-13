@@ -20,7 +20,7 @@ from FFormula import FFormula
 
 # To maintain the context of the function (call context, constraints, etc.)
 class FFuncContext:
-    def __init__(self, func:Function, parent_contract:Contract, parent_func:Function=None, caller_node:Node=None):
+    def __init__(self, func:Function, parent_contract:Contract, parent_func:Function=None, caller_node:Node=None, mergeFormulas:Dict[Variable, FFormula]={}, retVarMap: Dict[str, FFormula]={}):
         self.currentFormulaMap: Dict[Variable, FFormula] = {}
         self.globalFuncConstraint = True
         self.refMap: Dict[Variable, Variable] = {}
@@ -32,7 +32,7 @@ class FFuncContext:
         self.returnIRs: List[Operation] = []
         self.callerRetVar: Variable = None
         # name: ret_0, ret_1, ...,  ret_i (especially for TupleVariable)
-        self.retVarMap: Dict[str, FFormula] = {}
+        self.retVarMap: Dict[str, FFormula] = retVarMap
 
         self.func = func
         self.parent_contract = parent_contract
@@ -42,6 +42,8 @@ class FFuncContext:
         # map the params to the original args
         # e.g., from1 -> from -> account
         self.mapIndex2Var: Dict[Variable, Variable] = {}
+        # merge formulas and only single instance with no copy
+        self.mergeFormulas: Dict[Variable, FFormula] = mergeFormulas
         # node path
         self.node_path = []
         # conditional jump
@@ -49,6 +51,8 @@ class FFuncContext:
         self.condition_stack = []
         self.branch_cond = BoolVal(True)
         self.cond_expr_if = BoolVal(True)
+        #  stop and give up the current path
+        self.stop = False
 
     
     def push_cond(self, conditon:ExprRef, true_or_false:bool):
@@ -79,6 +83,15 @@ class FFuncContext:
         if var in self.currentFormulaMap:
             del self.currentFormulaMap[var]
 
+    
+    def mergeFormula(self, var:Variable, fformula:FFormula):
+        if var in self.mergeFormulas:
+            self.mergeFormulas[var].expressions_with_constraints.extend(fformula.expressions_with_constraints)
+            # delete redundant expressions
+            self.mergeFormulas[var].expressions_with_constraints = list(set(self.mergeFormulas[var].expressions_with_constraints))
+        else:
+            self.mergeFormulas[var] = fformula
+
 
     def clearTempVariableCache(self):
         self.returnIRs = []
@@ -97,7 +110,7 @@ class FFuncContext:
 
 
     def copy(self):
-        new_context = FFuncContext(self.func, self.parent_contract, self.parent_func, self.caller_node)
+        new_context = FFuncContext(self.func, self.parent_contract, self.parent_func, self.caller_node, self.mergeFormulas, self.refMap)
         new_context.currentFormulaMap = {var: fformula.copy() for var, fformula in self.currentFormulaMap.items()}
         new_context.retVarMap = {var: fformula.copy() for var, fformula in self.retVarMap.items()}
         new_context.returnIRs = self.returnIRs
