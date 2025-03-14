@@ -3,6 +3,7 @@ import sys
 from loguru import logger
 from Contract import BuildFormula, FContract
 from typing import List
+import config
 
 # read args
 # ================================================================
@@ -27,6 +28,13 @@ parser.add_argument(
 )
 
 
+parser.add_argument(
+    "--max_iter",
+    type=int,
+    default=100,
+    help="maximum number of iterations"
+)
+
 args = parser.parse_args()
 
 
@@ -47,10 +55,13 @@ def testArgsParse():
 
 
 if __name__ == "__main__":
+    # Update global config
+    config.refined = args.refined
+    config.max_iter = args.max_iter
 
     # set log level
     logger.add("./log", level="DEBUG")
     global analyzed_contracts
     analyzed_contracts: List[FContract] = []
-    if  contract_pairs:
-        BuildFormula(contract_pairs, args.refined)
+    if contract_pairs:
+        BuildFormula(contract_pairs)

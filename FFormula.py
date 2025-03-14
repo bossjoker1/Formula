@@ -7,6 +7,7 @@ from slither.core.solidity_types import (
     ElementaryType,
     MappingType,
 )
+import config
 
 
 class ExpressionWithConstraint(NamedTuple):
@@ -58,8 +59,8 @@ def Check_constraint(cons) -> bool:
     return res == sat
 
 
-def Implied_exp(expr1, expr2, refined=False):
-    if refined:
+def Implied_exp(expr1, expr2):
+    if config.refined:
         solver = Solver()
         solver.add(And(expr1, Not(expr2)))
         res_1 = solver.check() == unsat

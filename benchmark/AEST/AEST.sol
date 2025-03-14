@@ -1407,6 +1407,31 @@ contract AEST is ERC20, Ownable {
         }
     }
 
+    uint256 loop_count = 0;
+    uint256 loop_count2 = 0;
+
+
+    function loopTest() public {
+        for (uint256 i = 0; i < 10; i++) {
+            loop_count += i;
+        }
+
+        uint j = 0;
+        while (loop_count2 < 3) {
+            loop_count2 += 1;
+            j += 1;
+        }
+    }
+
+    uint256 loop_un;
+
+    function loopUnknownTest(uint256 cnt) public {
+        uint256 i = 0;
+        while (i < cnt) {
+            loop_un += 1;
+        }
+    }
+
 
     // aset-transfer
     function _transfer(

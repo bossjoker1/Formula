@@ -46,6 +46,7 @@ from z3 import *
 from FFormula import FFormula, FStateVar, ExpressionWithConstraint, Reconstruct_If, Check_constraint, Implied_exp
 from FType import FMap, FTuple, BINARY_OP
 from FFuncContext import FFuncContext 
+import config
 
 
 class FFunction:
@@ -58,7 +59,15 @@ class FFunction:
         self.highlevelCalls = self.func.all_high_level_calls
         self.FormulaMap:Dict[FStateVar, FFormula] = {}
         self.WaitCall = False
-        self.refined = self.parent_contract.refined_formula
+        self.solver = Solver()
+
+    
+    def Check_constraint(self, cons:ExprRef) -> bool:
+        self.solver.push()
+        self.solver.add(cons)
+        res = self.solver.check()
+        self.solver.pop()
+        return res == sat
 
     
     # init context and Formula map of the function's state variables
@@ -80,7 +89,7 @@ class FFunction:
         if stateVar in self.FormulaMap:
             if repeat:
                 for exp, cons in fformula.expressions_with_constraints:
-                    self.FormulaMap[stateVar].expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(Implied_exp(context.globalFuncConstraint, cons, self.refined))))
+                    self.FormulaMap[stateVar].expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(Implied_exp(context.globalFuncConstraint, cons))))
                     # delete redundant expressions
                     self.FormulaMap[stateVar].expressions_with_constraints = list(set(self.FormulaMap[stateVar].expressions_with_constraints))
             else:
@@ -89,7 +98,7 @@ class FFunction:
             if repeat:
                 self.FormulaMap[stateVar] = FFormula(stateVar, fformula.parent_contract, fformula.parent_function)
                 for exp, cons in fformula.expressions_with_constraints:
-                    self.FormulaMap[stateVar].expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(Implied_exp(context.globalFuncConstraint, cons, self.refined))))
+                    self.FormulaMap[stateVar].expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(Implied_exp(context.globalFuncConstraint, cons))))
                 # delete redundant expressions
                 self.FormulaMap[stateVar].expressions_with_constraints = list(set(self.FormulaMap[stateVar].expressions_with_constraints))
             else:
@@ -98,6 +107,8 @@ class FFunction:
 
     def printFFormulaMap(self):
         for stateVar, fformula in self.FormulaMap.items():
+            if len(fformula.expressions_with_constraints) == 0:
+                continue
             logger.debug(f"StateVar: {stateVar.stateVar.name} in function {self.func.canonical_name}, formula: {fformula}")
 
 
@@ -124,6 +135,11 @@ class FFunction:
 
         elif node.type == NodeType.STARTLOOP:
             pass
+        
+        # true -> loop body | false -> end loop(node)
+        elif node.type == NodeType.IFLOOP:
+            context.loop_count[node] += 1
+            self.analyzeNodeIRs(node, context)
 
         elif node.type == NodeType.ENDLOOP:
             pass
@@ -243,7 +259,7 @@ class FFunction:
                 temp_res_set = set()
                 for exp in context.currentFormulaMap[bool_var].expressions_with_constraints:
                     temp_res = simplify(And(And(exp.expression, exp.constraint), context.globalFuncConstraint))
-                    if not Check_constraint(temp_res):
+                    if not self.Check_constraint(temp_res):
                         continue
                     temp_res_set.add(temp_res)    
                 # context.globalFuncConstraint = simplify(Reconstruct_If(temp_res_list) if len(temp_res_list)!=0 else BoolVal(False))
@@ -254,7 +270,7 @@ class FFunction:
                 else:
                     context.globalFuncConstraint = simplify(Or(*temp_res_set))
                 # if globalFuncConstraint is still false(can be infer directly), discard the following nodes
-                if not Check_constraint(context.globalFuncConstraint):
+                if not self.Check_constraint(context.globalFuncConstraint):
                     context.stop = True
                     return
                 
@@ -274,8 +290,8 @@ class FFunction:
             callee_func = FFunction(ir.function, self.parent_contract)
             callee_context = FFuncContext(func=ir.function, parent_contract=self.parent_contract, parent_func=context.func, caller_node=ir.node)
             # shoud AND if_cond when calling 
-            callee_context.globalFuncConstraint = simplify(Implied_exp(context.globalFuncConstraint, context.branch_cond, self.refined))
-            if not Check_constraint(callee_context.globalFuncConstraint):
+            callee_context.globalFuncConstraint = simplify(Implied_exp(context.globalFuncConstraint, context.branch_cond))
+            if not self.Check_constraint(callee_context.globalFuncConstraint):
                 context.stop = True
                 return
             callee_func.buildFFormulaMap(callee_context)
@@ -337,7 +353,12 @@ class FFunction:
         lvalue, rvalue = self.getRefPointsTo(ir.lvalue, context), self.getRefPointsTo(ir.rvalue, context)
         rexp = self.handleVariableExpr(rvalue, context)
         # directly override
-        context.currentFormulaMap[lvalue].expressions_with_constraints = rexp
+        if lvalue not in context.currentFormulaMap.keys():
+            fformula = FFormula(FStateVar(self.parent_contract, lvalue), self.parent_contract, self)
+            fformula.expressions_with_constraints = rexp
+            context.updateContext(lvalue, fformula)
+        else:
+            context.currentFormulaMap[lvalue].expressions_with_constraints = rexp
         return
     
 
@@ -441,8 +462,8 @@ class FFunction:
             combined_expr = simplify(op(litem.expression, ritem.expression))
             if combined_expr == None:
                 logger.error(f"Error in merging expressions: {litem.expression} and {ritem.expression}")
-            combined_constraint = simplify(Implied_exp(litem.constraint, ritem.constraint, self.refined))
-            if not Check_constraint(combined_constraint):
+            combined_constraint = simplify(Implied_exp(litem.constraint, ritem.constraint))
+            if not self.Check_constraint(combined_constraint):
                 continue
             res.append(ExpressionWithConstraint(combined_expr, combined_constraint))
         # constaints are not satisfied, discard this branch
@@ -456,6 +477,7 @@ class FFunction:
 
         if var.type == ElementaryType("uint256"):
             formula = Int(var.name)
+            self.solver.add(formula >= 0)
         elif var.type == ElementaryType("bool"):
             formula = Bool(var.name)
         elif var.type == ElementaryType("string"):
@@ -470,7 +492,7 @@ class FFunction:
     def handleVariableExpr(self, var:Variable, context:FFuncContext) -> List[ExpressionWithConstraint]:
         expressions_with_constraints = []
         combine_if_cons = simplify(And(context.globalFuncConstraint, context.branch_cond))
-        if not Check_constraint(combine_if_cons):
+        if not self.Check_constraint(combine_if_cons):
             context.stop = True
             return expressions_with_constraints
         # handle Constant
@@ -511,9 +533,9 @@ class FFunction:
             else:
                 for exp, cons in context.currentFormulaMap[var].expressions_with_constraints:
                     temp_cons = simplify(Implied_exp(cons, combine_if_cons))
-                    if not Check_constraint(temp_cons):
+                    if not self.Check_constraint(temp_cons):
                         continue
-                    expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(Implied_exp(cons, context.branch_cond, self.refined))))
+                    expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(Implied_exp(cons, context.branch_cond))))
 
         return expressions_with_constraints
          
@@ -531,8 +553,8 @@ class FFunction:
         # 0. modifier_call
         # if isinstance(callee_context.func, Modifier):
         # caller_context.globalFuncConstraint = simplify(And(And(caller_context.globalFuncConstraint, callee_context.globalFuncConstraint), callee_context.branch_cond))
-        caller_context.globalFuncConstraint = Implied_exp(caller_context.globalFuncConstraint, Implied_exp(callee_context.globalFuncConstraint, callee_context.branch_cond, self.refined))
-        if not Check_constraint(caller_context.globalFuncConstraint):
+        caller_context.globalFuncConstraint = Implied_exp(caller_context.globalFuncConstraint, Implied_exp(callee_context.globalFuncConstraint, callee_context.branch_cond))
+        if not self.Check_constraint(caller_context.globalFuncConstraint):
             caller_context.stop = True
             return True
         # 1. update return values
@@ -613,10 +635,10 @@ class FFunction:
                     if flag:
                         continue
                     _, current_work_list = self.call_stack[-1]
-                    if context.caller_node.type == NodeType.IF:
-                        process_if_node(caller_context, context.caller_node, current_work_list)
+                    if context.caller_node.type == NodeType.IF or context.caller_node.type == NodeType.IFLOOP:
+                        self.process_if_node(caller_context, context.caller_node, current_work_list)
                     else:
-                        process_general_node(caller_context, context.caller_node, current_work_list)
+                        self.process_general_node(caller_context, context.caller_node, current_work_list)
                     # need to update
                     context = caller_context
                 continue
@@ -631,38 +653,57 @@ class FFunction:
             if self.WaitCall or context.stop:
                 continue
 
-            if node.type == NodeType.IF:
-                process_if_node(context, node, current_work_list)
+            if node.type == NodeType.IF or node.type == NodeType.IFLOOP:
+                self.process_if_node(context, node, current_work_list)
             elif node.type == NodeType.PLACEHOLDER:
                 current_work_list.clear()
             else:
-                process_general_node(context, node, current_work_list)
+                self.process_general_node(context, node, current_work_list)
 
         return
+    
             
-# =======================================================================================================
-def process_if_node(context, node, work_list):
-    true_son, false_son = node.son_true, node.son_false
-    true_context, false_context = context.copy(), context.copy()
+    def process_if_node(self, context:FFuncContext, node:Node, work_list):
+        if node.type == NodeType.IF:
+            true_son, false_son = node.son_true, node.son_false
+            true_context, false_context = context.copy(), context.copy()
 
-    true_context.node_path.append(true_son)
-    true_context.push_cond(context.cond_expr_if, True)
-    if Check_constraint(simplify(And(true_context.globalFuncConstraint, true_context.branch_cond))):
-        work_list.append((true_context, true_son))
+            true_context.node_path.append(true_son)
+            true_context.push_cond(context.cond_expr_if, True)
+            if self.Check_constraint(simplify(And(true_context.globalFuncConstraint, true_context.branch_cond))):
+                work_list.append((true_context, true_son))
 
-    false_context.node_path.append(false_son)
-    false_context.push_cond(context.cond_expr_if, False)
-    if Check_constraint(simplify(And(false_context.globalFuncConstraint, false_context.branch_cond))):
-        work_list.append((false_context, false_son))
+            false_context.node_path.append(false_son)
+            false_context.push_cond(context.cond_expr_if, False)
+            if self.Check_constraint(simplify(And(false_context.globalFuncConstraint, false_context.branch_cond))):
+                work_list.append((false_context, false_son))
+        elif node.type == NodeType.IFLOOP:
+            # enter loop body
+            true_son, false_son = node.son_true, node.son_false
+            true_context, false_context = context.copy(), context.copy()
+
+            true_context.node_path.append(true_son)
+            false_context.node_path.append(false_son)
+            # true_context.push_cond(context.cond_expr_if, True)
+            if context.loop_count[node] > config.max_iter:
+                work_list.append((false_context, false_son))
+                # should warning users here
+                logger.warning(f"Loop Node {node.node_id} has exceeded the maximum iteration limit ({config.max_iter}), skipping the rest of the analysis.")
+            else:
+                if self.Check_constraint(simplify(And(true_context.globalFuncConstraint, context.cond_expr_if))):
+                    work_list.append((true_context, true_son))
+                else:
+                    
+                    work_list.append((false_context, false_son))
 
 
-def process_general_node(context, node, work_list):
-    if len(node.sons) == 0 and node.type == NodeType.ENDIF:
-        context.pop_cond()
-        return
-    for son in node.sons:
-        new_context = context.copy()
-        new_context.node_path.append(son)
-        if node.type == NodeType.ENDIF:
-            new_context.pop_cond()
-        work_list.append((new_context, son))
+    def process_general_node(self, context, node, work_list):
+        if len(node.sons) == 0 and node.type in [NodeType.ENDIF, NodeType.ENDLOOP]:
+            context.pop_cond()
+            return
+        for son in node.sons:
+            new_context = context.copy()
+            new_context.node_path.append(son)
+            if node.type == NodeType.ENDIF:
+                new_context.pop_cond()
+            work_list.append((new_context, son))

@@ -1,4 +1,5 @@
 from typing import List, Dict, Any
+from collections import defaultdict
 from slither.core.declarations import (
     Function, 
     Contract, 
@@ -53,6 +54,8 @@ class FFuncContext:
         self.cond_expr_if = BoolVal(True)
         #  stop and give up the current path
         self.stop = False
+        # loop count: Node -> int
+        self.loop_count = defaultdict(int) 
 
     
     def push_cond(self, conditon:ExprRef, true_or_false:bool):
@@ -95,7 +98,7 @@ class FFuncContext:
             for exp, cons in fformula.expressions_with_constraints:
                 self.mergeFormulas[var].expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(Implied_exp(self.globalFuncConstraint, cons))))
             # delete redundant expressions
-            self.mergeFormulas[var].expressions_with_constraints = list(set(self.mergeFormulas[var].expressions_with_constraints))
+            self.mergeFormulas[var].expressions_with_constraints = list(set(self.mergeFormulas[var].expressions_with_constraints)) # type: ignore
 
 
     def clearTempVariableCache(self):
@@ -103,7 +106,7 @@ class FFuncContext:
         self.callerRetVar = None
         variables_to_delete = []
         for var in self.currentFormulaMap.keys():
-            if isinstance(var, TemporaryVariable):
+            if isinstance(var, TemporaryVariable): # type: ignore
                 variables_to_delete.append(var)
         for var in variables_to_delete:
             self.deleteContext(var)
@@ -127,5 +130,6 @@ class FFuncContext:
         new_context.condition_stack = self.condition_stack.copy()
         new_context.branch_cond = self.branch_cond
         new_context.cond_expr_if = self.cond_expr_if
+        new_context.loop_count = self.loop_count.copy()
         return new_context
     
