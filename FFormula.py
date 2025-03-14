@@ -40,7 +40,7 @@ class FFormula:
     def __str__(self):
         result = "\n"
         for idx, expr_with_constraint in enumerate(list(set(self.expressions_with_constraints))):
-            result += f"Expression [{idx}]: {expr_with_constraint.expression}, \nConstraint [{idx}]: {simplify(expr_with_constraint.constraint)}\n"
+            result += f"Expression [{idx}]: {expr_with_constraint.expression}, \nConstraint [{idx}]: {expr_with_constraint.constraint}\n"
         return result
     
 
@@ -57,6 +57,15 @@ def Check_constraint(cons) -> bool:
     res = solver.check()
     return res == sat
 
+
+def Implied_exp(expr1, expr2):
+    solver = Solver()
+    solver.add(And(expr1, Not(expr2)))
+    res = solver.check() == unsat
+    if res:
+        return expr1
+    else:
+        return And(expr1, expr2)
 
 def Reconstruct_If(exprs_with_constraints: List[ExpressionWithConstraint]) -> Optional[ExprRef]:
         if not exprs_with_constraints:

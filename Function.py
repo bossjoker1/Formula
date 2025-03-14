@@ -43,7 +43,7 @@ from slither.slithir.operations import(
     Condition,
 )
 from z3 import *
-from FFormula import FFormula, FStateVar, ExpressionWithConstraint, Reconstruct_If, Check_constraint
+from FFormula import FFormula, FStateVar, ExpressionWithConstraint, Reconstruct_If, Check_constraint, Implied_exp
 from FType import FMap, FTuple, BINARY_OP
 from FFuncContext import FFuncContext 
 
@@ -115,7 +115,7 @@ class FFunction:
             pass
 
         # callee function's modification on state variables will be handled when it returns
-        if self.is_terminal_node(node):
+        if self.is_terminal_node(node) and not context.stop:
             if not self.WaitCall and not context.parent_func:
                 for var, formula in context.currentFormulaMap.items():
                     if len(formula.expressions_with_constraints) == 0:
@@ -185,7 +185,7 @@ class FFunction:
 
     def handleConditionIR(self, ir:Condition, context:FFuncContext):
         cond = self.getRefPointsTo(ir.value, context)
-        cond_expr = self.handleVariableExpr(cond, context)
+        cond_expr = self.handleVariableExpr(cond, context, True)
         cond_expr_if = Reconstruct_If(cond_expr)
         context.cond_expr_if = simplify(cond_expr_if)
         
@@ -226,22 +226,30 @@ class FFunction:
             ]: 
                 bool_var = ir.arguments[0]
                 assert bool_var in context.currentFormulaMap.keys()
-                temp_res_list = []
+                temp_res_set = set()
                 for exp in context.currentFormulaMap[bool_var].expressions_with_constraints:
                     temp_res = simplify(And(And(exp.expression, exp.constraint), context.globalFuncConstraint))
                     if not Check_constraint(temp_res):
                         continue
-                    temp_res_list.append(ExpressionWithConstraint(expression=BoolVal(True), constraint=temp_res))    
-                context.globalFuncConstraint = simplify(Reconstruct_If(temp_res_list) if len(temp_res_list)!=0 else BoolVal(False))
+                    temp_res_set.add(temp_res)    
+                # context.globalFuncConstraint = simplify(Reconstruct_If(temp_res_list) if len(temp_res_list)!=0 else BoolVal(False))
+                if len(temp_res_set) == 0:
+                    context.globalFuncConstraint = BoolVal(False)
+                elif len(temp_res_set) == 1:
+                    context.globalFuncConstraint = temp_res_set.pop()
+                else:
+                    context.globalFuncConstraint = simplify(Or(*temp_res_set))
                 # if globalFuncConstraint is still false(can be infer directly), discard the following nodes
                 if not Check_constraint(context.globalFuncConstraint):
                     context.stop = True
+                    return
                 
             elif ir.function in [
                 SolidityFunction("revert()"),
                 SolidityFunction("revert(string)"),
             ]:
                 context.stop = True
+                return
             
         elif isinstance(ir, InternalCall) or isinstance(ir, HighLevelCall):
             # if ir.is_modifier_call:
@@ -252,7 +260,10 @@ class FFunction:
             callee_func = FFunction(ir.function, self.parent_contract)
             callee_context = FFuncContext(func=ir.function, parent_contract=self.parent_contract, parent_func=context.func, caller_node=ir.node)
             # shoud AND if_cond when calling 
-            callee_context.globalFuncConstraint = simplify(And(context.globalFuncConstraint, context.branch_cond))
+            callee_context.globalFuncConstraint = simplify(Implied_exp(context.globalFuncConstraint, context.branch_cond))
+            if not Check_constraint(callee_context.globalFuncConstraint):
+                context.stop = True
+                return
             callee_func.buildFFormulaMap(callee_context)
             # map args to params
             self.mapArgsToParams(ir, context, callee_context)
@@ -386,7 +397,7 @@ class FFunction:
         left, right = self.getRefPointsTo(ir.variable_left, context), self.getRefPointsTo(ir.variable_right, context)
         lexp, rexp = self.handleVariableExpr(left, context), self.handleVariableExpr(right, context)
         # handle operation
-        merged_exprs = self.mergeExpWithConstraints(lexp, rexp, BINARY_OP[ir.type])
+        merged_exprs = self.mergeExpWithConstraints(lexp, rexp, BINARY_OP[ir.type], context)
         if isinstance(result, StateVariable):
             '''
             I think only in ret expr, it needs to be added(or updated) in FormulaMap, 
@@ -408,7 +419,7 @@ class FFunction:
         return
     
 
-    def mergeExpWithConstraints(self, lexp:List[ExpressionWithConstraint], rexp:List[ExpressionWithConstraint], op:Any) -> List[ExpressionWithConstraint]:
+    def mergeExpWithConstraints(self, lexp:List[ExpressionWithConstraint], rexp:List[ExpressionWithConstraint], op:Any, context:FFuncContext) -> List[ExpressionWithConstraint]:
         res : List[ExpressionWithConstraint] = []
         
         for litem, ritem in zip(lexp, rexp):
@@ -420,7 +431,9 @@ class FFunction:
             if not Check_constraint(combined_constraint):
                 continue
             res.append(ExpressionWithConstraint(combined_expr, combined_constraint))
-
+        # constaints are not satisfied, discard this branch
+        if len(res) == 0:
+            context.stop = True
         return res
     
 
@@ -440,9 +453,14 @@ class FFunction:
 
 
     # TODO: SolidityVariables are not complete.
-    def handleVariableExpr(self, var:Variable, context:FFuncContext) -> List[ExpressionWithConstraint]:
+    def handleVariableExpr(self, var:Variable, context:FFuncContext, con:bool=False) -> List[ExpressionWithConstraint]:
         expressions_with_constraints = []
         combine_if_cons = simplify(And(context.globalFuncConstraint, context.branch_cond))
+        if not Check_constraint(combine_if_cons):
+            context.stop = True
+            return expressions_with_constraints
+        if con:
+            combine_if_cons = BoolVal(True)
         # handle Constant
         if isinstance(var, Constant):
             # logger.debug(f"==== [V] {var.name}, {var.type}, {var.value}")
@@ -497,7 +515,11 @@ class FFunction:
     def updateContext_FuncRet(self, caller_context:FFuncContext, callee_context:FFuncContext):
         # 0. modifier_call
         # if isinstance(callee_context.func, Modifier):
-        caller_context.globalFuncConstraint = simplify(And(And(caller_context.globalFuncConstraint, callee_context.globalFuncConstraint), callee_context.branch_cond))
+        # caller_context.globalFuncConstraint = simplify(And(And(caller_context.globalFuncConstraint, callee_context.globalFuncConstraint), callee_context.branch_cond))
+        caller_context.globalFuncConstraint = Implied_exp(caller_context.globalFuncConstraint, Implied_exp(callee_context.globalFuncConstraint, callee_context.branch_cond))
+        if not Check_constraint(caller_context.globalFuncConstraint):
+            caller_context.stop = True
+            return True
         # 1. update return values
         callerRetVar = caller_context.callerRetVar
         if isinstance(callerRetVar, TemporaryVariable):

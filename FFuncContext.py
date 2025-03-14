@@ -22,7 +22,7 @@ from FFormula import FFormula
 class FFuncContext:
     def __init__(self, func:Function, parent_contract:Contract, parent_func:Function=None, caller_node:Node=None, mergeFormulas:Dict[Variable, FFormula]={}, retVarMap: Dict[str, FFormula]={}):
         self.currentFormulaMap: Dict[Variable, FFormula] = {}
-        self.globalFuncConstraint = True
+        self.globalFuncConstraint = BoolVal(True)
         self.refMap: Dict[Variable, Variable] = {}
 
         self.caller_node = caller_node
@@ -110,9 +110,8 @@ class FFuncContext:
 
 
     def copy(self):
-        new_context = FFuncContext(self.func, self.parent_contract, self.parent_func, self.caller_node, self.mergeFormulas, self.refMap)
+        new_context = FFuncContext(self.func, self.parent_contract, self.parent_func, self.caller_node, self.mergeFormulas, self.retVarMap)
         new_context.currentFormulaMap = {var: fformula.copy() for var, fformula in self.currentFormulaMap.items()}
-        new_context.retVarMap = {var: fformula.copy() for var, fformula in self.retVarMap.items()}
         new_context.returnIRs = self.returnIRs
         new_context.callerRetVar = self.callerRetVar
         new_context.globalFuncConstraint = self.globalFuncConstraint
