@@ -58,6 +58,7 @@ class FFunction:
         self.highlevelCalls = self.func.all_high_level_calls
         self.FormulaMap:Dict[FStateVar, FFormula] = {}
         self.WaitCall = False
+        self.refined = self.parent_contract.refined_formula
 
     
     # init context and Formula map of the function's state variables
@@ -75,11 +76,24 @@ class FFunction:
             context.updateContext(localVar, formula)
 
 
-    def addFFormula(self, stateVar:FStateVar, fformula:FFormula=None):
+    def addFFormula(self, stateVar:FStateVar, fformula:FFormula=None, context:FFuncContext=None, repeat:bool=False):
         if stateVar in self.FormulaMap:
-            self.FormulaMap[stateVar].expressions_with_constraints.extend(fformula.expressions_with_constraints)
+            if repeat:
+                for exp, cons in fformula.expressions_with_constraints:
+                    self.FormulaMap[stateVar].expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(Implied_exp(context.globalFuncConstraint, cons, self.refined))))
+                    # delete redundant expressions
+                    self.FormulaMap[stateVar].expressions_with_constraints = list(set(self.FormulaMap[stateVar].expressions_with_constraints))
+            else:
+                self.FormulaMap[stateVar].expressions_with_constraints.extend(fformula.expressions_with_constraints)
         else:
-            self.FormulaMap[stateVar] = fformula
+            if repeat:
+                self.FormulaMap[stateVar] = FFormula(stateVar, fformula.parent_contract, fformula.parent_function)
+                for exp, cons in fformula.expressions_with_constraints:
+                    self.FormulaMap[stateVar].expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(Implied_exp(context.globalFuncConstraint, cons, self.refined))))
+                # delete redundant expressions
+                self.FormulaMap[stateVar].expressions_with_constraints = list(set(self.FormulaMap[stateVar].expressions_with_constraints))
+            else:
+                self.FormulaMap[stateVar] = fformula
 
 
     def printFFormulaMap(self):
@@ -121,7 +135,7 @@ class FFunction:
                     if len(formula.expressions_with_constraints) == 0:
                         continue
                     if isinstance(var, StateVariable) or (isinstance(var, FMap) and isinstance(var.map, StateVariable)):
-                        self.addFFormula(FStateVar(self.parent_contract, var), formula)
+                        self.addFFormula(FStateVar(self.parent_contract, var), formula, context, repeat=True)
             else:
                 for var, formula in context.currentFormulaMap.items():
                     if len(formula.expressions_with_constraints) == 0:
@@ -185,7 +199,7 @@ class FFunction:
 
     def handleConditionIR(self, ir:Condition, context:FFuncContext):
         cond = self.getRefPointsTo(ir.value, context)
-        cond_expr = self.handleVariableExpr(cond, context, True)
+        cond_expr = self.handleVariableExpr(cond, context)
         cond_expr_if = Reconstruct_If(cond_expr)
         context.cond_expr_if = simplify(cond_expr_if)
         
@@ -260,7 +274,7 @@ class FFunction:
             callee_func = FFunction(ir.function, self.parent_contract)
             callee_context = FFuncContext(func=ir.function, parent_contract=self.parent_contract, parent_func=context.func, caller_node=ir.node)
             # shoud AND if_cond when calling 
-            callee_context.globalFuncConstraint = simplify(Implied_exp(context.globalFuncConstraint, context.branch_cond))
+            callee_context.globalFuncConstraint = simplify(Implied_exp(context.globalFuncConstraint, context.branch_cond, self.refined))
             if not Check_constraint(callee_context.globalFuncConstraint):
                 context.stop = True
                 return
@@ -427,7 +441,7 @@ class FFunction:
             combined_expr = simplify(op(litem.expression, ritem.expression))
             if combined_expr == None:
                 logger.error(f"Error in merging expressions: {litem.expression} and {ritem.expression}")
-            combined_constraint = simplify(And(litem.constraint, ritem.constraint))
+            combined_constraint = simplify(Implied_exp(litem.constraint, ritem.constraint, self.refined))
             if not Check_constraint(combined_constraint):
                 continue
             res.append(ExpressionWithConstraint(combined_expr, combined_constraint))
@@ -453,14 +467,12 @@ class FFunction:
 
 
     # TODO: SolidityVariables are not complete.
-    def handleVariableExpr(self, var:Variable, context:FFuncContext, con:bool=False) -> List[ExpressionWithConstraint]:
+    def handleVariableExpr(self, var:Variable, context:FFuncContext) -> List[ExpressionWithConstraint]:
         expressions_with_constraints = []
         combine_if_cons = simplify(And(context.globalFuncConstraint, context.branch_cond))
         if not Check_constraint(combine_if_cons):
             context.stop = True
             return expressions_with_constraints
-        if con:
-            combine_if_cons = BoolVal(True)
         # handle Constant
         if isinstance(var, Constant):
             # logger.debug(f"==== [V] {var.name}, {var.type}, {var.value}")
@@ -473,17 +485,17 @@ class FFunction:
                 formula = StringVal(var.value)
             elif var.type == ElementaryType("address"):
                 formula = BitVecVal(var.value, 160)
-            varExpr = ExpressionWithConstraint(formula, combine_if_cons)
+            varExpr = ExpressionWithConstraint(formula, context.branch_cond)
             expressions_with_constraints.append(varExpr)
         elif isinstance(var, SolidityVariable):
             if var.name == "this":
                 formula = self.parent_contract.address_this
-                varExpr = ExpressionWithConstraint(formula, combine_if_cons)
+                varExpr = ExpressionWithConstraint(formula, context.branch_cond)
                 expressions_with_constraints.append(varExpr)
             else:
                 # | msg.sender | msg.value | block.timestamp | block.number | block.coinbase | 
                 formula = self.assignSymbolicVal(var)
-                varExpr = ExpressionWithConstraint(formula, combine_if_cons)
+                varExpr = ExpressionWithConstraint(formula, context.branch_cond)
                 expressions_with_constraints.append(varExpr)
         else:
             if var in context.currentFormulaMap:
@@ -494,11 +506,14 @@ class FFunction:
             if len(expressions_with_constraints) == 0:
                 # assigning a symbolic value (with its name)
                 formula = self.assignSymbolicVal(var)
-                varExpr = ExpressionWithConstraint(formula, combine_if_cons)
+                varExpr = ExpressionWithConstraint(formula, context.branch_cond)
                 expressions_with_constraints.append(varExpr)
             else:
-                for _, cons in context.currentFormulaMap[var].expressions_with_constraints:
-                    cons = simplify(And(cons, combine_if_cons))
+                for exp, cons in context.currentFormulaMap[var].expressions_with_constraints:
+                    temp_cons = simplify(Implied_exp(cons, combine_if_cons))
+                    if not Check_constraint(temp_cons):
+                        continue
+                    expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(Implied_exp(cons, context.branch_cond, self.refined))))
 
         return expressions_with_constraints
          
@@ -516,7 +531,7 @@ class FFunction:
         # 0. modifier_call
         # if isinstance(callee_context.func, Modifier):
         # caller_context.globalFuncConstraint = simplify(And(And(caller_context.globalFuncConstraint, callee_context.globalFuncConstraint), callee_context.branch_cond))
-        caller_context.globalFuncConstraint = Implied_exp(caller_context.globalFuncConstraint, Implied_exp(callee_context.globalFuncConstraint, callee_context.branch_cond))
+        caller_context.globalFuncConstraint = Implied_exp(caller_context.globalFuncConstraint, Implied_exp(callee_context.globalFuncConstraint, callee_context.branch_cond, self.refined))
         if not Check_constraint(caller_context.globalFuncConstraint):
             caller_context.stop = True
             return True
@@ -642,6 +657,9 @@ def process_if_node(context, node, work_list):
 
 
 def process_general_node(context, node, work_list):
+    if len(node.sons) == 0 and node.type == NodeType.ENDIF:
+        context.pop_cond()
+        return
     for son in node.sons:
         new_context = context.copy()
         new_context.node_path.append(son)

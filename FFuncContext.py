@@ -15,7 +15,7 @@ from slither.slithir.operations import(
     BinaryType,
 )
 from z3 import *
-from FFormula import FFormula
+from FFormula import FFormula, ExpressionWithConstraint, Implied_exp
 
 
 # To maintain the context of the function (call context, constraints, etc.)
@@ -86,11 +86,16 @@ class FFuncContext:
     
     def mergeFormula(self, var:Variable, fformula:FFormula):
         if var in self.mergeFormulas:
-            self.mergeFormulas[var].expressions_with_constraints.extend(fformula.expressions_with_constraints)
+            for exp, cons in fformula.expressions_with_constraints:
+                self.mergeFormulas[var].expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(Implied_exp(self.globalFuncConstraint, cons))))
             # delete redundant expressions
             self.mergeFormulas[var].expressions_with_constraints = list(set(self.mergeFormulas[var].expressions_with_constraints))
         else:
-            self.mergeFormulas[var] = fformula
+            self.mergeFormulas[var] = FFormula(fformula.stateVar, fformula.parent_contract, fformula.parent_function)
+            for exp, cons in fformula.expressions_with_constraints:
+                self.mergeFormulas[var].expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(Implied_exp(self.globalFuncConstraint, cons))))
+            # delete redundant expressions
+            self.mergeFormulas[var].expressions_with_constraints = list(set(self.mergeFormulas[var].expressions_with_constraints))
 
 
     def clearTempVariableCache(self):

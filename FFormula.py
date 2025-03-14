@@ -58,12 +58,20 @@ def Check_constraint(cons) -> bool:
     return res == sat
 
 
-def Implied_exp(expr1, expr2):
-    solver = Solver()
-    solver.add(And(expr1, Not(expr2)))
-    res = solver.check() == unsat
-    if res:
-        return expr1
+def Implied_exp(expr1, expr2, refined=False):
+    if refined:
+        solver = Solver()
+        solver.add(And(expr1, Not(expr2)))
+        res_1 = solver.check() == unsat
+        solver.reset()
+        solver.add(And(expr2, Not(expr1)))
+        res_2 = solver.check() == unsat
+        if res_1:
+            return expr1
+        elif res_2:
+            return expr2
+        else:
+            return And(expr1, expr2)
     else:
         return And(expr1, expr2)
 

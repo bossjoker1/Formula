@@ -20,6 +20,13 @@ parser.add_argument(
     help="Specify contract paths and their main contract names. Example: -t path_1 contract_name_1 path_2 contract_name_2"
 )
 
+parser.add_argument(
+    "-r", "--refined",
+    action="store_true",
+    help="refine the expression to get clearer results"
+)
+
+
 args = parser.parse_args()
 
 
@@ -46,4 +53,4 @@ if __name__ == "__main__":
     global analyzed_contracts
     analyzed_contracts: List[FContract] = []
     if  contract_pairs:
-        BuildFormula(contract_pairs)
+        BuildFormula(contract_pairs, args.refined)
