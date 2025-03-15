@@ -694,7 +694,7 @@ class FFunction:
             if context.loop_count[node] > config.max_iter:
                 work_list.append((false_context, false_son))
                 # should warning users here
-                logger.warning(f"Loop Node {node.node_id} has exceeded the maximum iteration limit ({config.max_iter}), skipping the rest of the analysis.")
+                logger.warning(f"Loop Node {node} has exceeded the maximum iteration limit ({config.max_iter}), skipping the rest of the analysis.")
             else:
                 if self.Check_constraint(simplify(And(true_context.globalFuncConstraint, context.cond_expr_if))):
                     work_list.append((true_context, true_son))

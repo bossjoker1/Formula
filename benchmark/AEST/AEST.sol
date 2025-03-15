@@ -376,7 +376,7 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      * - `to` cannot be the zero address.
      * - `from` must have a balance of at least `amount`.
      */
-     //erc20-transfer
+     //200
     function _transfer(
         address from,
         address to,
@@ -388,31 +388,31 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
         // --------------------------
 
         
-        uint testp = 0;
-        // amount += 10;
-        testp = amount + 20;
-        bool test = true;
-        bool not_test = !test;
-        bool res;
-        res = test && false;
-        address owner = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
-        string memory hhh = "hello world!";
+        // uint testp = 0;
+        // // amount += 10;
+        // testp = amount + 20;
+        // bool test = true;
+        // bool not_test = !test;
+        // bool res;
+        // res = test && false;
+        // address owner = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
+        // string memory hhh = "hello world!";
 
-        _beforeTokenTransfer(from, to, amount);
+        // _beforeTokenTransfer(from, to, amount);
 
-        address thisAddr = address(this);
+        // address thisAddr = address(this);
 
 
-        // 数组测试
-        uint256[] memory testArray = new uint256[](3);
-        testArray[0] = 1;
-        testArray[1] = 2;
-        testArray[2] = 3;
+        // // 数组测试
+        // uint256[] memory testArray = new uint256[](3);
+        // testArray[0] = 1;
+        // testArray[1] = 2;
+        // testArray[2] = 3;
 
-        // 结构体测试
-        SimpleStruct memory simpleStruct;
-        simpleStruct.age = amount;
-        simpleStruct.count = 200;
+        // // 结构体测试
+        // SimpleStruct memory simpleStruct;
+        // simpleStruct.age = amount;
+        // simpleStruct.count = 200;
 
         // -----------------------------------------
 
@@ -1429,6 +1429,7 @@ contract AEST is ERC20, Ownable {
         uint256 i = 0;
         while (i < cnt) {
             loop_un += 1;
+            i += 1;
         }
     }
 
@@ -1457,7 +1458,8 @@ contract AEST is ERC20, Ownable {
 
         if(from1 == address(this) && to1 == uniswapV2Pair){
             super._transfer(from1, to1, amount1);
-        } else {
+        } 
+        else {
             if(automatedMarketMakerPairs[from1]) {
                 buyTokenAndFees(from1, to1, amount1);
             }

@@ -55,7 +55,7 @@ def BuildFormula(contract_pairs):
             # ERC20._transfer(address,address,uint256)
             # AEST.conTest()
             # AEST.loopTest()
-            if ffunc.func.canonical_name == "AEST._transfer(address,address,uint256)":
+            if ffunc.func.canonical_name == "AEST.distributeFee()":
                 print(ffunc)
                 ffunc.buildCFG()
                 ffunc.printFFormulaMap()
