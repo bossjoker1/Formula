@@ -43,7 +43,7 @@ from slither.slithir.operations import(
     Condition,
 )
 from z3 import *
-from FFormula import FFormula, FStateVar, ExpressionWithConstraint, Reconstruct_If, Check_constraint, Implied_exp
+from FFormula import FFormula, FStateVar, ExpressionWithConstraint, Reconstruct_If
 from FType import FMap, FTuple, BINARY_OP
 from FFuncContext import FFuncContext 
 import config
@@ -68,28 +68,33 @@ class FFunction:
         res = self.solver.check()
         self.solver.pop()
         return res == sat
+    
+
+    def Implied_exp(self, expr1, expr2):
+        if config.refined:
+            self.solver.push()
+            self.solver.add(And(expr1, Not(expr2)))
+            res_1 = self.solver.check() == unsat
+            self.solver.pop()
+            self.solver.push()
+            self.solver.add(And(expr2, Not(expr1)))
+            res_2 = self.solver.check() == unsat
+            self.solver.pop()
+            if res_1:
+                return expr1
+            elif res_2:
+                return expr2
+            else:
+                return And(expr1, expr2)
+        else:
+            return And(expr1, expr2)
 
     
-    # init context and Formula map of the function's state variables
-    def buildFFormulaMap(self, context:FFuncContext):
-        for stateVar in self.stateVarWrite:
-            fstateVar = FStateVar(self.parent_contract, stateVar)
-            formula = FFormula(fstateVar, self.parent_contract, self)
-            self.FormulaMap[fstateVar] = formula
-            context.updateContext(stateVar, formula)
-        for params in self.func.parameters:
-            formula = FFormula(FStateVar(self.parent_contract, params), self.parent_contract, self)
-            context.updateContext(params, formula)
-        for localVar in self.func.local_variables:
-            formula = FFormula(FStateVar(self.parent_contract, localVar), self.parent_contract, self)
-            context.updateContext(localVar, formula)
-
-
     def addFFormula(self, stateVar:FStateVar, fformula:FFormula=None, context:FFuncContext=None, repeat:bool=False):
         if stateVar in self.FormulaMap:
             if repeat:
                 for exp, cons in fformula.expressions_with_constraints:
-                    self.FormulaMap[stateVar].expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(Implied_exp(context.globalFuncConstraint, cons))))
+                    self.FormulaMap[stateVar].expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(self.Implied_exp(context.globalFuncConstraint, cons))))
                     # delete redundant expressions
                     self.FormulaMap[stateVar].expressions_with_constraints = list(set(self.FormulaMap[stateVar].expressions_with_constraints))
             else:
@@ -98,7 +103,7 @@ class FFunction:
             if repeat:
                 self.FormulaMap[stateVar] = FFormula(stateVar, fformula.parent_contract, fformula.parent_function)
                 for exp, cons in fformula.expressions_with_constraints:
-                    self.FormulaMap[stateVar].expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(Implied_exp(context.globalFuncConstraint, cons))))
+                    self.FormulaMap[stateVar].expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(self.Implied_exp(context.globalFuncConstraint, cons))))
                 # delete redundant expressions
                 self.FormulaMap[stateVar].expressions_with_constraints = list(set(self.FormulaMap[stateVar].expressions_with_constraints))
             else:
@@ -290,11 +295,15 @@ class FFunction:
             callee_func = FFunction(ir.function, self.parent_contract)
             callee_context = FFuncContext(func=ir.function, parent_contract=self.parent_contract, parent_func=context.func, caller_node=ir.node)
             # shoud AND if_cond when calling 
-            callee_context.globalFuncConstraint = simplify(Implied_exp(context.globalFuncConstraint, context.branch_cond))
+            callee_context.globalFuncConstraint = simplify(self.Implied_exp(context.globalFuncConstraint, context.branch_cond))
             if not self.Check_constraint(callee_context.globalFuncConstraint):
                 context.stop = True
                 return
-            callee_func.buildFFormulaMap(callee_context)
+            # add state variable context
+            temp_context = context.copy()
+            temp_context.clearRefMap()
+            temp_context.clearTempVariableCache()
+            callee_context.currentFormulaMap = temp_context.currentFormulaMap
             # map args to params
             self.mapArgsToParams(ir, context, callee_context)
             self.pushCallStack(ir, context, callee_context)
@@ -417,11 +426,12 @@ class FFunction:
                     fformula = FFormula(FStateVar(self.parent_contract, map_var), self.parent_contract, self)
                     context.updateContext(map_var, fformula)
 
-            idx_exp = self.handleVariableExpr(idx, context)
-            for exp, cons in idx_exp:
-                select_var = Select(context.mapVar2Exp[var], exp)
-                exp_cons = ExpressionWithConstraint(select_var, simplify(And(cons, context.globalFuncConstraint)))
-                context.currentFormulaMap[map_var].expressions_with_constraints.append(exp_cons)
+            # idx_exp = self.handleVariableExpr(idx, context)
+            # for exp, cons in idx_exp:
+            #     select_var = Select(context.mapVar2Exp[var], exp)
+            #     exp_cons = ExpressionWithConstraint(select_var, simplify(cons))
+            #     context.currentFormulaMap[map_var].expressions_with_constraints.append(exp_cons)
+            context.currentFormulaMap[map_var].expressions_with_constraints = list(set(context.currentFormulaMap[map_var].expressions_with_constraints))
             return
             
 
@@ -462,7 +472,7 @@ class FFunction:
             combined_expr = simplify(op(litem.expression, ritem.expression))
             if combined_expr == None:
                 logger.error(f"Error in merging expressions: {litem.expression} and {ritem.expression}")
-            combined_constraint = simplify(Implied_exp(litem.constraint, ritem.constraint))
+            combined_constraint = simplify(self.Implied_exp(litem.constraint, ritem.constraint))
             if not self.Check_constraint(combined_constraint):
                 continue
             res.append(ExpressionWithConstraint(combined_expr, combined_constraint))
@@ -532,12 +542,12 @@ class FFunction:
                 expressions_with_constraints.append(varExpr)
             else:
                 for exp, cons in context.currentFormulaMap[var].expressions_with_constraints:
-                    temp_cons = simplify(Implied_exp(cons, combine_if_cons))
+                    temp_cons = simplify(self.Implied_exp(cons, combine_if_cons))
                     if not self.Check_constraint(temp_cons):
                         continue
-                    expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(Implied_exp(cons, context.branch_cond))))
+                    expressions_with_constraints.append(ExpressionWithConstraint(exp, simplify(self.Implied_exp(cons, context.branch_cond))))
 
-        return expressions_with_constraints
+        return list(set(expressions_with_constraints))
          
 
     def getRefPointsTo(self, ref:Variable, context:FFuncContext):
@@ -553,7 +563,7 @@ class FFunction:
         # 0. modifier_call
         # if isinstance(callee_context.func, Modifier):
         # caller_context.globalFuncConstraint = simplify(And(And(caller_context.globalFuncConstraint, callee_context.globalFuncConstraint), callee_context.branch_cond))
-        caller_context.globalFuncConstraint = Implied_exp(caller_context.globalFuncConstraint, Implied_exp(callee_context.globalFuncConstraint, callee_context.branch_cond))
+        caller_context.globalFuncConstraint = self.Implied_exp(caller_context.globalFuncConstraint, self.Implied_exp(callee_context.globalFuncConstraint, callee_context.branch_cond))
         if not self.Check_constraint(caller_context.globalFuncConstraint):
             caller_context.stop = True
             return True
@@ -588,10 +598,7 @@ class FFunction:
             if isinstance(var, StateVariable) or (isinstance(var, FMap) and isinstance(var.map, StateVariable)):
                 if isinstance(var, FMap) and var.index in callee_context.mapIndex2Var:
                     var = FMap(var.map, callee_context.mapIndex2Var[var.index], var.type)
-                if var in caller_context.currentFormulaMap:
-                    caller_context.currentFormulaMap[var].expressions_with_constraints.extend(formula.expressions_with_constraints)
-                else:
-                    caller_context.currentFormulaMap[var] = formula
+                caller_context.currentFormulaMap[var] = formula
 
         if self.is_terminal_node(callee_context.caller_node):
             for var, formula in caller_context.currentFormulaMap.items():
@@ -616,7 +623,6 @@ class FFunction:
     def buildCFG(self):
         context = FFuncContext(func=self.func, parent_contract=self.parent_contract.sli_contract)
         context.node_path.append(self.func.entry_point)
-        self.buildFFormulaMap(context)
         self.call_stack = []
         work_list = [(context, self.func.entry_point)]
         self.call_stack.append((False, work_list))

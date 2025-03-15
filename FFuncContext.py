@@ -21,7 +21,7 @@ from FFormula import FFormula, ExpressionWithConstraint, Implied_exp
 
 # To maintain the context of the function (call context, constraints, etc.)
 class FFuncContext:
-    def __init__(self, func:Function, parent_contract:Contract, parent_func:Function=None, caller_node:Node=None, mergeFormulas:Dict[Variable, FFormula]={}, retVarMap: Dict[str, FFormula]={}):
+    def __init__(self, func:Function, parent_contract:Contract, parent_func:Function=None, caller_node:Node=None, mergeFormulas:Dict[Variable, FFormula]=None, retVarMap: Dict[str, FFormula]=None):
         self.currentFormulaMap: Dict[Variable, FFormula] = {}
         self.globalFuncConstraint = BoolVal(True)
         self.refMap: Dict[Variable, Variable] = {}
@@ -33,7 +33,7 @@ class FFuncContext:
         self.returnIRs: List[Operation] = []
         self.callerRetVar: Variable = None
         # name: ret_0, ret_1, ...,  ret_i (especially for TupleVariable)
-        self.retVarMap: Dict[str, FFormula] = retVarMap
+        self.retVarMap: Dict[str, FFormula] = retVarMap if retVarMap is not None else {}
 
         self.func = func
         self.parent_contract = parent_contract
@@ -44,7 +44,7 @@ class FFuncContext:
         # e.g., from1 -> from -> account
         self.mapIndex2Var: Dict[Variable, Variable] = {}
         # merge formulas and only single instance with no copy
-        self.mergeFormulas: Dict[Variable, FFormula] = mergeFormulas
+        self.mergeFormulas: Dict[Variable, FFormula] = mergeFormulas if mergeFormulas is not None else {}
         # node path
         self.node_path = []
         # conditional jump
