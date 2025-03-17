@@ -5,14 +5,25 @@ from slither.core.declarations.contract import Contract
 from typing import List
 from z3 import BitVecVal
 from Function import FFunction
+from Helper import OnlineHelper
+import config
+
 
 class FContract:
-    def __init__(self, sli_contract:Contract, path:str, name:str, slith_all=None):
+    def __init__(self, sli_contract:Contract, path:str="", name:str="", online_helper=None, address:str="0x0"):
         self.sli_contract = sli_contract
         self.solpath = path
         self.main_name = name
-        self._address_this = self.fakeThisAddress()
-        self.slither_all = slith_all
+        # self.slither_all = slith_all
+        if config.mode == "online":
+            self.online_helper = online_helper
+        else:
+            self.online_helper = OnlineHelper("bnb", -1)
+        if config.mode == "online":
+            self.address = address
+            self._address_this = BitVecVal(int(address, 16), 160)
+        else:
+            self._address_this = self.fakeThisAddress()
 
 
     # generate a fake address for this contract based on self.parent_contract.main_name&solpath
@@ -40,13 +51,30 @@ class FContract:
 
 
 # ================================================================
+# online mode
+def OnlineBuild(contract_info):
+    onlineHelper = OnlineHelper(contract_info["chain"], contract_info["block"])
+    for addr in contract_info["addresses"]:
+        logger.debug(f"Building formula for contract at address {addr}")
+        config_info = onlineHelper.get_contract_sourcecode(addr)
+        sli_contract = onlineHelper.get_slither_contract(config_info)
+        fcontract = FContract(sli_contract=sli_contract, path=config_info["contract_file"], name=config_info["contract_name"], online_helper=onlineHelper, address=addr)
+        for func in fcontract.sli_contract.functions:
+            ffunc = FFunction(func, fcontract)
+            if ffunc.func.canonical_name == "AEST.addInitLiquidity(uint256)":
+                print(ffunc)
+                ffunc.buildCFG()
+                ffunc.printFFormulaMap()
 
+
+# TODO: uncompleted
+# offline mode: read from local files
 def BuildFormula(contract_pairs):
     for path, main_name in contract_pairs:
         logger.debug(f"Building formula for contract {main_name} at path {path}")
         slither = Slither(path)
         sli_contract = slither.get_contract_from_name(main_name)[0]
-        fcontract = FContract(sli_contract, path, main_name, slither)
+        fcontract = FContract(sli_contract, path, main_name)
         for func in fcontract.sli_contract.functions:
             # only care about public/external functions
             ffunc = FFunction(func, fcontract)
@@ -55,7 +83,8 @@ def BuildFormula(contract_pairs):
             # ERC20._transfer(address,address,uint256)
             # AEST.conTest()
             # AEST.loopTest()
-            if ffunc.func.canonical_name == "AEST.distributeFee()":
+            # AEST.addInitLiquidity(uint256)
+            if ffunc.func.canonical_name == "AEST._transfer(address,address,uint256)":
                 print(ffunc)
                 ffunc.buildCFG()
                 ffunc.printFFormulaMap()

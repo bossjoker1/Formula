@@ -290,10 +290,25 @@ class FFunction:
             # if ir.is_modifier_call:
             #     continue
             # highlevel call requires more processing
-            if isinstance(ir, HighLevelCall):
-                pass
-            callee_func = FFunction(ir.function, self.parent_contract)
-            callee_context = FFuncContext(func=ir.function, parent_contract=self.parent_contract, parent_func=context.func, caller_node=ir.node)
+            callee_func, callee_context = ir.function, None
+            if isinstance(ir, HighLevelCall) and not isinstance(ir, LibraryCall):
+                # get callee contract variable
+                dest = context.temp2addrs[ir.destination] if ir.destination in context.temp2addrs.keys() else ir.destination
+                # try to get callee contract address
+                callee_addr = self.parent_contract.online_helper.get_contract_address(dest, context, context.parent_contract.address)
+                if callee_addr:
+                    from Contract import FContract
+                    callee_info = self.parent_contract.online_helper.get_contract_sourcecode(callee_addr)
+                    sli_contract = self.parent_contract.online_helper.get_slither_contract(callee_info)
+                    callee_contract = FContract(sli_contract=sli_contract, path=callee_info["contract_file"], name=callee_info["contract_name"], online_helper=self.parent_contract.online_helper, address=callee_addr)
+                    func = sli_contract.get_function_from_full_name(ir.function.full_name)
+                    callee_func = func
+                    callee_context = FFuncContext(func=func, parent_contract=callee_contract, parent_func=context.func, caller_node=ir.node)
+            else:
+                callee_context = FFuncContext(func=ir.function, parent_contract=context.parent_contract, parent_func=context.func, caller_node=ir.node)
+            if not callee_context:
+                logger.warning(f"something wrong with callee context: {ir.function.full_name}")
+                callee_context = FFuncContext(func=ir.function, parent_contract=context.parent_contract, parent_func=context.func, caller_node=ir.node)
             # shoud AND if_cond when calling 
             callee_context.globalFuncConstraint = simplify(self.Implied_exp(context.globalFuncConstraint, context.branch_cond))
             if not self.Check_constraint(callee_context.globalFuncConstraint):
@@ -305,21 +320,27 @@ class FFunction:
             temp_context.clearTempVariableCache()
             callee_context.currentFormulaMap = temp_context.currentFormulaMap
             # map args to params
-            self.mapArgsToParams(ir, context, callee_context)
-            self.pushCallStack(ir, context, callee_context)
+            self.mapArgsToParams(ir, callee_func, context, callee_context)
+            self.pushCallStack(ir, callee_func, context, callee_context)
             self.WaitCall = True
             context.callflag = True
             if ir.lvalue:
                 context.callerRetVar = self.getRefPointsTo(ir.lvalue, context)
 
 
-    def pushCallStack(self, ir:Call, context:FFuncContext, callee_context:FFuncContext):
-        self.call_stack.append((context, [(callee_context, ir.function.entry_point)]))
+    # def getFuncbyName(self, func_name:str, sli_contract:Contract):
+    #     for func in sli_contract.functions:
+    #         if func.full_name != func_name:
+    #             continue
+    #         if func.is
+
+    def pushCallStack(self, ir:Call, func:Function, context:FFuncContext, callee_context:FFuncContext):
+        self.call_stack.append((context, [(callee_context, func.entry_point)]))
 
 
     # TODO: constant var mapping
-    def mapArgsToParams(self, ir:Call, context:FFuncContext, callee_context:FFuncContext):
-        for arg, param in zip(ir.arguments, ir.function.parameters):
+    def mapArgsToParams(self, ir:Call, func:Function, context:FFuncContext, callee_context:FFuncContext):
+        for arg, param in zip(ir.arguments, func.parameters):
             arg = self.getRefPointsTo(arg, context)
             logger.debug(f"[CALL] arg: {arg}, param: {param}")
             callee_context.mapIndex2Var[param] = context.mapIndex2Var[arg] if arg in context.mapIndex2Var.keys() else arg
@@ -355,6 +376,16 @@ class FFunction:
         fformula = FFormula(FStateVar(self.parent_contract, ir.lvalue), self.parent_contract, self)
         fformula.expressions_with_constraints = rexp
         context.updateContext(ir.lvalue, fformula)
+        # storage potential callee contract address
+        if not isinstance(ir.lvalue, TemporaryVariable):
+            return
+        # maybe it is not necessary
+        # if not isinstance(rvalue, StateVariable):
+        #     return
+        if not (rvalue.type == ElementaryType("address") or rvalue.type.storage_size[0] == 20):
+            return
+
+        context.temp2addrs[ir.lvalue] = rvalue
         return
     
 
@@ -482,7 +513,7 @@ class FFunction:
         return res
     
 
-    def assignSymbolicVal(self, var):
+    def assignSymbolicVal(self, var:Variable):
         formula = None
 
         if var.type == ElementaryType("uint256"):
@@ -493,6 +524,8 @@ class FFunction:
         elif var.type == ElementaryType("string"):
             formula = String(var.name)
         elif var.type == ElementaryType("address"):
+            formula = BitVec(var.name, 160)
+        elif var.type.storage_size[0] == 20:
             formula = BitVec(var.name, 160)
 
         return formula
@@ -571,15 +604,21 @@ class FFunction:
         callerRetVar = caller_context.callerRetVar
         if isinstance(callerRetVar, TemporaryVariable):
             fformula = FFormula(FStateVar(self.parent_contract, callerRetVar), self.parent_contract, self)
-            fformula.expressions_with_constraints = callee_context.retVarMap['ret_0'].expressions_with_constraints.copy()
+            if 'ret_0' in callee_context.retVarMap:
+                fformula.expressions_with_constraints = callee_context.retVarMap['ret_0'].expressions_with_constraints.copy()
+            else:
+                fformula.expressions_with_constraints = self.handleVariableExpr(callerRetVar, caller_context)
             caller_context.updateContext(callerRetVar, fformula)
         elif isinstance(callerRetVar, TupleVariable):
-            assert len(callee_context.retVarMap.keys()) > 0
+            # assert len(callee_context.retVarMap.keys()) > 0
             for idx in range(len(callee_context.retVarMap.keys())):
                 ret_idx = f"ret_{idx}"
                 tuple_var = FTuple(callerRetVar, idx, callerRetVar.type[idx])
                 fformula = FFormula(FStateVar(self.parent_contract, tuple_var), self.parent_contract, self)
-                fformula.expressions_with_constraints = callee_context.retVarMap[ret_idx].expressions_with_constraints.copy()
+                if ret_idx in callee_context.retVarMap:
+                    fformula.expressions_with_constraints = callee_context.retVarMap[ret_idx].expressions_with_constraints.copy()
+                else:
+                    fformula.expressions_with_constraints = self.handleVariableExpr(tuple_var, caller_context)
                 caller_context.updateContext(tuple_var, fformula)
 
         logger.debug(f"[N] Parent Function: {caller_context.parent_func.canonical_name if caller_context.parent_func else 'None'} \n [N] Current Function <{caller_context.func.canonical_name}> Processing node {caller_context.caller_node}")
@@ -613,6 +652,8 @@ class FFunction:
     
 
     def printNodeInfo(self, context:FFuncContext, node:Node):
+        if not node:
+            return
         logger.debug(f"[N] Parent Function: {context.parent_func.canonical_name if context.parent_func else 'None'} \n [N] Current Function <{context.func.canonical_name}> Processing node {node} {node.node_id}")
         for ir in node.irs:
             logger.debug(f"----- ir[{type(ir)}] : {ir}") 
@@ -621,7 +662,7 @@ class FFunction:
     # reorder basic blocks(nodes) of function (especially for those have modifiers)
     # pass Context to the son nodes
     def buildCFG(self):
-        context = FFuncContext(func=self.func, parent_contract=self.parent_contract.sli_contract)
+        context = FFuncContext(func=self.func, parent_contract=self.parent_contract)
         context.node_path.append(self.func.entry_point)
         self.call_stack = []
         work_list = [(context, self.func.entry_point)]
@@ -651,6 +692,8 @@ class FFunction:
 
             context, node = current_work_list.pop(0)
             context.callflag = False
+            if not node:
+                continue
             # print debug info
             self.printNodeInfo(context, node)
 

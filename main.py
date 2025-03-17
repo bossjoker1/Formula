@@ -1,7 +1,7 @@
 import argparse
 import sys
 from loguru import logger
-from Contract import BuildFormula, FContract
+from Contract import BuildFormula, FContract, OnlineBuild
 from typing import List
 import config
 
@@ -30,6 +30,12 @@ parser.add_argument(
     help="Contract addresses on chain. Required in online mode. Example: -addr addr1 addr2 addr3"
 )
 
+parser.add_argument(
+    "-b", "--block",
+    type=int,
+    help="[Online mode only] Block number to analyze. If not specified, latest block will be used"
+)
+
 # 离线模式的合约参数
 parser.add_argument(
     "-t", "--contracts",
@@ -53,7 +59,7 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-
+# 参数验证
 if args.mode == "online":
     if not args.chain or not args.addresses:
         parser.error("Online mode requires both --chain and --addresses arguments")
@@ -62,9 +68,12 @@ if args.mode == "online":
     contract_pairs = []
     chain_info = {
         "chain": args.chain,
-        "addresses": args.addresses
+        "addresses": args.addresses,
+        "block": args.block if args.block is not None else -1
     }
 else:  # offline mode
+    if args.block is not None:
+        parser.error("--block argument is only valid in online mode")
     if not args.contracts:
         parser.error("Offline mode requires --contracts argument")
     if len(args.contracts) % 2 != 0:
@@ -79,10 +88,12 @@ def testArgsParse():
         print("Contract Addresses:")
         for addr in args.addresses:
             print(f"  - {addr}")
+        print(f"Block Number: {chain_info['block']}")
     else:
         print("Contracts:")
         for path, name in contract_pairs:
             print(f"  - Path: {path}, Name: {name}")
+
 
 if __name__ == "__main__":
     # Update global config
@@ -95,5 +106,7 @@ if __name__ == "__main__":
     logger.add("./log", level="DEBUG")
     global analyzed_contracts
     analyzed_contracts: List[FContract] = []
-    if contract_pairs:
+    if config.mode == "online":
+        OnlineBuild(config.chain_info)
+    else:
         BuildFormula(contract_pairs)

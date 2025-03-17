@@ -1319,8 +1319,12 @@ contract AEST is ERC20, Ownable {
         require(startTime == 0, "only once");
         startTime = block.timestamp; 
 
+        address uniswap = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
+
         _approve(address(this), address(uniswapV2Router), LP_SUPPLY);
         IERC20(usdtAddr).approve(address(uniswapV2Router), amount);
+
+
 
         uniswapV2Router.addLiquidity(
             address(this),

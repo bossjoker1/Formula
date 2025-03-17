@@ -56,6 +56,8 @@ class FFuncContext:
         self.stop = False
         # loop count: Node -> int
         self.loop_count = defaultdict(int) 
+        # potential callee contract address
+        self.temp2addrs: Dict[Variable, Variable] = {}
 
     
     def push_cond(self, conditon:ExprRef, true_or_false:bool):
@@ -111,6 +113,7 @@ class FFuncContext:
         for var in variables_to_delete:
             self.deleteContext(var)
         self.clearRefMap()
+        self.temp2addrs.clear()
 
 
     def clearRefMap(self):
@@ -131,5 +134,6 @@ class FFuncContext:
         new_context.branch_cond = self.branch_cond
         new_context.cond_expr_if = self.cond_expr_if
         new_context.loop_count = self.loop_count.copy()
+        new_context.temp2addrs = {var: addr for var, addr in self.temp2addrs.items()}
         return new_context
     
