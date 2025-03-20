@@ -43,6 +43,9 @@ class FMap(Variable):
     def __str__(self):
         return f"{self.map.name}[{self.index.name}]"
     
+    @property
+    def map_name(self):
+        return self._map.name
     
     @property
     def map(self):

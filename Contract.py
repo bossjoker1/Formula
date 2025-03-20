@@ -62,10 +62,10 @@ def OnlineBuild(contract_info):
         for func in fcontract.sli_contract.functions:
             ffunc = FFunction(func, fcontract)
             # logger.debug(f"[F] function name:  {ffunc.func.canonical_name}")
-            if ffunc.func.canonical_name == "BEP20USDT.approve(address,uint256)":
+            if ffunc.func.canonical_name == "AEST.distributeFee()":
                 print(ffunc)
                 ffunc.buildCFG()
-                ffunc.printFFormulaMap()
+                
 
 
 # TODO: uncompleted
