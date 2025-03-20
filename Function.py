@@ -41,6 +41,7 @@ from slither.slithir.operations import(
     Unpack,
     LibraryCall,
     Condition,
+    Length,
 )
 from z3 import *
 from FFormula import FFormula, FStateVar, ExpressionWithConstraint, Reconstruct_If
@@ -155,7 +156,7 @@ class FFunction:
                 for var, formula in context.currentFormulaMap.items():
                     if len(formula.expressions_with_constraints) == 0:
                         continue
-                    if isinstance(var, StateVariable) or (isinstance(var, FMap) and isinstance(var.map, StateVariable)):
+                    if isinstance(var, StateVariable) or (isinstance(var, FMap) and (isinstance(var.map, StateVariable) or isinstance(var.map, FMap))):
                         self.addFFormula(FStateVar(self.parent_contract, var), formula, context, repeat=True)
             else:
                 for var, formula in context.currentFormulaMap.items():
@@ -184,6 +185,7 @@ class FFunction:
 
 
     def analyzeIR(self, ir:Operation, context:FFuncContext):
+        from slither.slithir.operations import Length
         # case by case, no other better way I think
         if isinstance(ir, Binary):
             self.handleBinaryIROp(ir, context)
@@ -217,6 +219,21 @@ class FFunction:
         elif isinstance(ir, Condition):
             self.handleConditionIR(ir, context)
 
+        
+        elif isinstance(ir, Length):
+            self.handleLengthIR(ir, context)
+
+
+    def handleLengthIR(self, ir:Length, context:FFuncContext):
+        var = self.getRefPointsTo(ir.value, context)
+        var_exp = Int(var.name + ".length")
+        # special case
+        context.refMap[ir.lvalue] = ir.lvalue
+        fformula = FFormula(FStateVar(self.parent_contract, ir.lvalue), self.parent_contract, self)
+        fformula.expressions_with_constraints = [ExpressionWithConstraint(var_exp, True)]
+        context.updateContext(ir.lvalue, fformula)
+        return
+
 
     def handleConditionIR(self, ir:Condition, context:FFuncContext):
         cond = self.getRefPointsTo(ir.value, context)
@@ -229,7 +246,12 @@ class FFunction:
         lvalue = self.getRefPointsTo(ir.lvalue, context)
         tuple_var = FTuple(ir.tuple, ir.index, ir.tuple.type[ir.index])
         rexp = self.handleVariableExpr(tuple_var, context)
-        context.currentFormulaMap[lvalue].expressions_with_constraints = rexp
+        if lvalue not in context.currentFormulaMap:
+            fformula = FFormula(FStateVar(self.parent_contract, lvalue), self.parent_contract, self)
+            fformula.expressions_with_constraints = rexp
+            context.updateContext(lvalue, fformula)
+        else:
+            context.currentFormulaMap[lvalue].expressions_with_constraints = rexp
         return
     
 
@@ -338,7 +360,7 @@ class FFunction:
         self.call_stack.append((context, [(callee_context, func.entry_point)]))
 
 
-    # TODO: constant var mapping
+    # TODO: not good enough
     def mapArgsToParams(self, ir:Call, func:Function, context:FFuncContext, callee_context:FFuncContext):
         for arg, param in zip(ir.arguments, func.parameters):
             arg = self.getRefPointsTo(arg, context)
@@ -416,7 +438,7 @@ class FFunction:
 
 
     def handleIndexIR(self, ir:Index, context:FFuncContext):
-        var, idx = ir.variable_left, ir.variable_right
+        var, idx = self.getRefPointsTo(ir.variable_left, context), self.getRefPointsTo(ir.variable_right, context)
         # logger.debug(f"==== [Index] {var}[{idx}]")
         if isinstance(var.type, MappingType):
             self.handleMapType(ir, context)
@@ -432,7 +454,7 @@ class FFunction:
 
     
     def handleMapType(self, ir:Index, context:FFuncContext):
-        var, idx = ir.variable_left, ir.variable_right
+        var, idx = self.getRefPointsTo(ir.variable_left, context), self.getRefPointsTo(ir.variable_right, context)
         ref = ir.lvalue
         if isinstance(var.type, MappingType):
             type_from, type_to = var.type.type_from, var.type.type_to
@@ -442,27 +464,49 @@ class FFunction:
                 ElementaryType("string"): StringSort(),
                 ElementaryType("address"): BitVecSort(160),
             }
-            map_from, map_to = type2type.get(type_from, IntSort()), type2type.get(type_to, IntSort())
             
-            if var not in context.mapVar2Exp.keys():
-                MapExp = Array(f"{var.name}", map_from, map_to)
-                context.mapVar2Exp[var] = MapExp
-            if idx in context.mapIndex2Var.keys():
-                map_var = FMap(var, context.mapIndex2Var[idx], ref.type)
-            else:    
-                map_var = FMap(var, idx, ref.type)
-            if isinstance(ref, ReferenceVariable):
-                context.refMap[ref] = map_var
-                if map_var not in context.currentFormulaMap:
-                    fformula = FFormula(FStateVar(self.parent_contract, map_var), self.parent_contract, self)
-                    context.updateContext(map_var, fformula)
-
-            # idx_exp = self.handleVariableExpr(idx, context)
-            # for exp, cons in idx_exp:
-            #     select_var = Select(context.mapVar2Exp[var], exp)
-            #     exp_cons = ExpressionWithConstraint(select_var, simplify(cons))
-            #     context.currentFormulaMap[map_var].expressions_with_constraints.append(exp_cons)
-            context.currentFormulaMap[map_var].expressions_with_constraints = list(set(context.currentFormulaMap[map_var].expressions_with_constraints))
+            map_from = type2type.get(type_from, IntSort())
+            
+            if isinstance(type_to, MappingType):
+                inner_type_from, inner_type_to = type_to.type_from, type_to.type_to
+                if isinstance(inner_type_from, MappingType):
+                    logger.warning(f"There is a more than 2-level mapping in the map type: {var.name}")
+                inner_map_from = type2type.get(inner_type_from, IntSort())
+                inner_map_to = type2type.get(inner_type_to, IntSort())
+                
+                if var not in context.mapVar2Exp.keys():
+                    # inner_array = Array(f"{var.name}_inner", inner_map_from, inner_map_to)
+                    outer_array = Array(f"{var.name}", map_from, ArraySort(inner_map_from, inner_map_to))
+                    context.mapVar2Exp[var] = outer_array
+                
+                if idx in context.mapIndex2Var:
+                    first_idx = context.mapIndex2Var[idx]
+                else:
+                    first_idx = idx
+                    
+                first_map_var = FMap(var, first_idx, type_to)
+                context.refMap[ref] = first_map_var
+                
+                if first_map_var not in context.currentFormulaMap:
+                    fformula = FFormula(FStateVar(self.parent_contract, first_map_var), self.parent_contract, self)
+                    context.updateContext(first_map_var, fformula)
+            else:
+                map_to = type2type.get(type_to, IntSort())
+                
+                if var not in context.mapVar2Exp.keys():
+                    MapExp = Array(f"{var.name}", map_from, map_to)
+                    context.mapVar2Exp[var] = MapExp
+                    
+                if idx in context.mapIndex2Var:
+                    map_var = FMap(var, context.mapIndex2Var[idx], ref.type)
+                else:    
+                    map_var = FMap(var, idx, ref.type)
+                    
+                if isinstance(ref, ReferenceVariable):
+                    context.refMap[ref] = map_var
+                    if map_var not in context.currentFormulaMap:
+                        fformula = FFormula(FStateVar(self.parent_contract, map_var), self.parent_contract, self)
+                        context.updateContext(map_var, fformula)
             return
             
 
@@ -564,10 +608,14 @@ class FFunction:
                 expressions_with_constraints.append(varExpr)
         else:
             if var in context.currentFormulaMap:
-                expressions_with_constraints = context.currentFormulaMap[var].expressions_with_constraints.copy()    
+                for exp, cons in context.currentFormulaMap[var].expressions_with_constraints:
+                    if exp == None:
+                        continue
+                    expressions_with_constraints.append(ExpressionWithConstraint(exp, cons))
             else:
                 fformula = FFormula(FStateVar(self.parent_contract, var), self.parent_contract, self)
                 context.updateContext(var, fformula)
+
             if len(expressions_with_constraints) == 0:
                 # assigning a symbolic value (with its name)
                 formula = self.assignSymbolicVal(var)
@@ -634,7 +682,7 @@ class FFunction:
         for var, formula in callee_context.mergeFormulas.items():
             if len(formula.expressions_with_constraints) == 0:
                 continue
-            if isinstance(var, StateVariable) or (isinstance(var, FMap) and isinstance(var.map, StateVariable)):
+            if isinstance(var, StateVariable) or (isinstance(var, FMap) and (isinstance(var.map, StateVariable) or isinstance(var.map, FMap))):
                 if isinstance(var, FMap) and var.index in callee_context.mapIndex2Var:
                     var = FMap(var.map, callee_context.mapIndex2Var[var.index], var.type)
                 caller_context.currentFormulaMap[var] = formula
@@ -643,7 +691,7 @@ class FFunction:
             for var, formula in caller_context.currentFormulaMap.items():
                 if len(formula.expressions_with_constraints) == 0:
                     continue
-                if isinstance(var, StateVariable) or (isinstance(var, FMap) and isinstance(var.map, StateVariable)):
+                if isinstance(var, StateVariable) or (isinstance(var, FMap) and (isinstance(var.map, StateVariable) or isinstance(var.map, FMap))):
                     if isinstance(var, FMap) and var.index in callee_context.mapIndex2Var:
                         var = FMap(var.map, caller_context.mapIndex2Var[var.index], var.type)
                     self.addFFormula(FStateVar(self.parent_contract, var), formula)
@@ -756,3 +804,5 @@ class FFunction:
             if node.type == NodeType.ENDIF:
                 new_context.pop_cond()
             work_list.append((new_context, son))
+
+            

@@ -61,7 +61,8 @@ def OnlineBuild(contract_info):
         fcontract = FContract(sli_contract=sli_contract, path=config_info["contract_file"], name=config_info["contract_name"], online_helper=onlineHelper, address=addr)
         for func in fcontract.sli_contract.functions:
             ffunc = FFunction(func, fcontract)
-            if ffunc.func.canonical_name == "AEST.addInitLiquidity(uint256)":
+            # logger.debug(f"[F] function name:  {ffunc.func.canonical_name}")
+            if ffunc.func.canonical_name == "BEP20USDT.approve(address,uint256)":
                 print(ffunc)
                 ffunc.buildCFG()
                 ffunc.printFFormulaMap()

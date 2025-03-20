@@ -82,6 +82,7 @@ class FFuncContext:
     def updateContext(self, var:Variable, fformula:FFormula):
         # need to polish
         self.currentFormulaMap[var] = fformula
+        self.currentFormulaMap[var].expressions_with_constraints = list(set(self.currentFormulaMap[var].expressions_with_constraints))
 
 
     def deleteContext(self, var:Variable):
