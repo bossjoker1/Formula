@@ -357,11 +357,11 @@ class FFunction:
         elif isinstance(ir, InternalCall) or isinstance(ir, HighLevelCall) or isinstance(ir, LowLevelCall):
             # if ir.is_modifier_call:
             #     continue
-            # highlevel call requires more processing
-            if isinstance(ir, LowLevelCall):
-                return
-            callee_func, callee_context = ir.function, None
-            if isinstance(ir, HighLevelCall) and not isinstance(ir, LibraryCall):
+            # highlevel call requires more processing     
+            callee_func, callee_context = None, None
+            if (isinstance(ir, HighLevelCall) and not isinstance(ir, LibraryCall)) or isinstance(ir, LowLevelCall):
+                if not isinstance(ir, LowLevelCall):
+                    callee_func = ir.function
                 # get callee contract variable
                 dest = context.temp2addrs[ir.destination] if ir.destination in context.temp2addrs.keys() else ir.destination
                 # try to get callee contract address
@@ -371,14 +371,27 @@ class FFunction:
                     callee_info = self.parent_contract.online_helper.get_contract_sourcecode(callee_addr)
                     sli_contract = self.parent_contract.online_helper.get_slither_contract(callee_info)
                     callee_contract = FContract(sli_contract=sli_contract, path=callee_info["contract_file"], name=callee_info["contract_name"], online_helper=self.parent_contract.online_helper, address=callee_addr)
-                    func = sli_contract.get_function_from_full_name(ir.function.full_name)
+                    if isinstance(ir, LowLevelCall):
+                        try:
+                            selector = self.parent_contract.online_helper.get4bytesinfo(context.low_level_args[ir.destination][0])
+                            func = sli_contract.get_function_from_signature(selector)
+                        except Exception as e:
+                            logger.warning(f"Error in getting function from selector: {e}")
+                            return
+                        finally:
+                            if not func:
+                                return
+                    else:
+                        func = sli_contract.get_function_from_full_name(ir.function.full_name)
                     callee_func = func
                     callee_context = FFuncContext(func=func, parent_contract=callee_contract, parent_func=context.func, caller_node=ir.node)
             else:
                 callee_context = FFuncContext(func=ir.function, parent_contract=context.parent_contract, parent_func=context.func, caller_node=ir.node)
+                callee_func = ir.function
             if not callee_context:
-                logger.warning(f"something wrong with callee context: {ir.function.full_name}")
-                callee_context = FFuncContext(func=ir.function, parent_contract=context.parent_contract, parent_func=context.func, caller_node=ir.node)
+                logger.warning(f"something wrong with callee context: {ir}")
+                return
+                # callee_context = FFuncContext(func=ir.function, parent_contract=context.parent_contract, parent_func=context.func, caller_node=ir.node)
             # shoud AND if_cond when calling 
             callee_context.globalFuncConstraint = simplify(self.Implied_exp(context.globalFuncConstraint, context.branch_cond))
             if not self.Check_constraint(callee_context.globalFuncConstraint):
@@ -432,8 +445,6 @@ class FFunction:
     
     def handleTypeConversionIR(self, ir:TypeConversion, context:FFuncContext):
         assert isinstance(ir.lvalue, TemporaryVariable)
-        if ir.lvalue.name == "TMP_43":
-            print(ir)
         rvalue = self.getRefPointsTo(ir.variable, context)
         # conversion here
         if not isinstance(rvalue, SolidityVariable):

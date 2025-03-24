@@ -12,6 +12,11 @@ import json
 import os
 import re
 import toml
+import pandas as pd
+
+
+selector_df = pd.read_csv('4bytes.csv', usecols=['text_signature', 'hex_signature'], dtype={'text_signature': str, 'hex_signature': str})
+selector_df = selector_df.set_index('hex_signature')
 
 # Load configuration
 try:
@@ -245,6 +250,13 @@ class OnlineHelper:
         except Exception as e:
             logger.error(f"Error in get_slither_contract: {str(e)}")
             return None
+        
+
+    def get4bytesinfo(self, selector):
+        if selector in selector_df.index:
+            return selector_df.loc[selector, 'text_signature']
+        else:
+            return "UNKNOWN"
 
 
 
