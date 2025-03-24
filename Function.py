@@ -193,7 +193,7 @@ class FFunction:
 
             for var, formula in context.currentFormulaMap.items():
                 if len(formula.expressions_with_constraints) == 0:
-                    continue
+                    continue                    
                 context.mergeFormula(var, formula)         
         return
     
@@ -532,7 +532,10 @@ class FFunction:
                 inner_map_from = type2type.get(inner_type_from, IntSort())
                 inner_map_to = type2type.get(inner_type_to, IntSort())
                 
-                first_map_var = FMap(var, idx, type_to)
+                if idx in context.mapIndex2Var.keys():
+                    first_map_var = FMap(var, context.mapIndex2Var[idx], type_to)
+                else:
+                    first_map_var = FMap(var, idx, type_to)
                 context.refMap[ref] = first_map_var
                 
                 if first_map_var not in context.currentFormulaMap:
@@ -549,7 +552,10 @@ class FFunction:
                     context.updateContext(first_map_var, fformula)
             else:
                 map_to = type2type.get(type_to, IntSort())
-                map_var = FMap(var, idx, ref.type)
+                if idx in context.mapIndex2Var.keys():
+                    map_var = FMap(var, context.mapIndex2Var[idx], ref.type)
+                else:
+                    map_var = FMap(var, idx, ref.type)
                     
                 if isinstance(ref, ReferenceVariable):
                     context.refMap[ref] = map_var
@@ -757,10 +763,11 @@ class FFunction:
             if len(formula.expressions_with_constraints) == 0:
                 continue
             if isinstance(var, StateVariable) or (isinstance(var, FMap) and (isinstance(var.map, StateVariable) or isinstance(var.map, FMap))):
-                # if isinstance(var, FMap) and var.index in callee_context.mapIndex2Var:
-                #     var = FMap(var.map, callee_context.mapIndex2Var[var.index], var.type)
+                if isinstance(var, FMap) and var.index in callee_context.mapIndex2Var:
+                    var = FMap(var.map, callee_context.mapIndex2Var[var.index], var.type)
                 caller_context.currentFormulaMap[var] = formula
                 if isinstance(var, FMap):
+                    # should update here
                     if var.index in callee_context.mergeFormulas:
                         caller_context.currentFormulaMap[var.index] = callee_context.mergeFormulas[var.index]
                         if isinstance(var.map, FMap):
@@ -773,8 +780,8 @@ class FFunction:
                 if len(formula.expressions_with_constraints) == 0:
                     continue
                 if isinstance(var, StateVariable) or (isinstance(var, FMap) and (isinstance(var.map, StateVariable) or isinstance(var.map, FMap))):
-                    # if isinstance(var, FMap) and var.index in callee_context.mapIndex2Var:
-                    #     var = FMap(var.map, caller_context.mapIndex2Var[var.index], var.type)
+                    if isinstance(var, FMap) and var.index in callee_context.mapIndex2Var:
+                        var = FMap(var.map, caller_context.mapIndex2Var[var.index], var.type)
                     self.addFFormula(FStateVar(self.parent_contract, var), formula)
 
         return False
