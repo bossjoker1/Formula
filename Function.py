@@ -30,6 +30,7 @@ from slither.slithir.operations import(
     Call,
     InternalCall,
     HighLevelCall,
+    LowLevelCall,
     Return,
     SolidityCall,
     BinaryType,
@@ -304,7 +305,14 @@ class FFunction:
         # tackle with different kinds of call
 
         # especially for require
-        if isinstance(ir, SolidityCall):
+        if isinstance(ir, SolidityCall) and ir.function in [
+            SolidityFunction("require(bool,string)"), 
+            SolidityFunction("require(bool)"),
+            SolidityFunction("require(bool,error)"),
+            SolidityFunction("assert(bool)"),
+            SolidityFunction("revert()"),
+            SolidityFunction("revert(string)"),
+        ]: 
             
             if ir.function in [
             SolidityFunction("require(bool,string)"), 
@@ -338,11 +346,20 @@ class FFunction:
             ]:
                 context.stop = True
                 return
-            
-        elif isinstance(ir, InternalCall) or isinstance(ir, HighLevelCall):
+            elif ir.function.full_name in [
+                "abi.encodeWithSelector()"
+            ]:
+                # record selector and arguments
+                lvalue, args = ir.lvalue, ir.arguments
+                context.low_level_args[lvalue] = args
+                return
+       
+        elif isinstance(ir, InternalCall) or isinstance(ir, HighLevelCall) or isinstance(ir, LowLevelCall):
             # if ir.is_modifier_call:
             #     continue
             # highlevel call requires more processing
+            if isinstance(ir, LowLevelCall):
+                return
             callee_func, callee_context = ir.function, None
             if isinstance(ir, HighLevelCall) and not isinstance(ir, LibraryCall):
                 # get callee contract variable
@@ -381,12 +398,6 @@ class FFunction:
                 context.callerRetVar = self.getRefPointsTo(ir.lvalue, context)
 
 
-    # def getFuncbyName(self, func_name:str, sli_contract:Contract):
-    #     for func in sli_contract.functions:
-    #         if func.full_name != func_name:
-    #             continue
-    #         if func.is
-
     def pushCallStack(self, ir:Call, func:Function, context:FFuncContext, callee_context:FFuncContext):
         self.call_stack.append((context, [(callee_context, func.entry_point)]))
 
@@ -421,20 +432,25 @@ class FFunction:
     
     def handleTypeConversionIR(self, ir:TypeConversion, context:FFuncContext):
         assert isinstance(ir.lvalue, TemporaryVariable)
+        if ir.lvalue.name == "TMP_43":
+            print(ir)
         rvalue = self.getRefPointsTo(ir.variable, context)
         # conversion here
         if not isinstance(rvalue, SolidityVariable):
             rvalue.type = ir.type
         rexp = self.handleVariableExpr(rvalue, context)
+        converted_exps = []
+        for exp, cons in rexp:
+            if is_int(exp) and (ir.type == ElementaryType("address") or ir.type.storage_size[0] == 20):
+                converted_exp = Int2BV(exp, 160)
+            else:
+                converted_exp = exp
+            converted_exps.append(ExpressionWithConstraint(converted_exp, cons))
         fformula = FFormula(FStateVar(self.parent_contract, ir.lvalue), self.parent_contract, self)
-        fformula.expressions_with_constraints = rexp
+        fformula.expressions_with_constraints = converted_exps
         context.updateContext(ir.lvalue, fformula)
+        
         # storage potential callee contract address
-        if not isinstance(ir.lvalue, TemporaryVariable):
-            return
-        # maybe it is not necessary
-        # if not isinstance(rvalue, StateVariable):
-        #     return
         if not (rvalue.type == ElementaryType("address") or rvalue.type.storage_size[0] == 20):
             return
 
@@ -545,7 +561,11 @@ class FFunction:
                                         select_exp = Select(Array(f"{var.name}", map_from, map_to), idx_exp)
                                         new_exprs.append(ExpressionWithConstraint(select_exp, idx_cons))
                             else:
+                                logger.debug(f"map_from: {map_from}, map_to: {map_to}")
                                 for idx_exp, idx_cons in idx_exprs:
+                                    if is_int(idx_exp) and is_bv_sort(map_from):
+                                        logger.debug(f"idx_exp: {idx_exp}, type: {type(idx_exp)}")
+                                        # idx_exp = 
                                     select_exp = Select(Array(f"{var.name}", map_from, map_to), idx_exp)
                                     new_exprs.append(ExpressionWithConstraint(select_exp, idx_cons))
                             fformula.expressions_with_constraints = new_exprs

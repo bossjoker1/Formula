@@ -58,6 +58,8 @@ class FFuncContext:
         self.loop_count = defaultdict(int) 
         # potential callee contract address
         self.temp2addrs: Dict[Variable, Variable] = {}
+        # low-level call
+        self.low_level_args: Dict[Variable, List[Variable]]= defaultdict(list)
 
     
     def push_cond(self, conditon:ExprRef, true_or_false:bool):
