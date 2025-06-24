@@ -1,0 +1,76 @@
+{
+    "contract": "PancakePair",
+    "functions": {
+      "mint": {
+        "reserve": {
+          "token_A": "increase",
+          "token_B": "increase"
+        },
+        "totalSupply": {
+          "pair_token": "increase"
+        },
+        "balanceOf": {
+          "msg.sender": {
+            "token_A": "decrease",
+            "token_B": "decrease"
+          },
+          "to": {
+            "pair_token": "increase"
+          }
+        }
+      },
+      "burn": {
+        "reserve": {
+          "token_A": "decrease",
+          "token_B": "decrease"
+        },
+        "totalSupply": {
+          "pair_token": "decrease"
+        },
+        "balanceOf": {
+          "to": {
+            "token_A": "increase",
+            "token_B": "increase"
+          },
+          "this": {
+            "pair_token": "decrease"
+          }
+        }
+      },
+      "swap": {
+        "reserve": {
+          "token_A": "change",
+          "token_B": "change"
+        },
+        "balanceOf": {
+          "to": {
+            "token_A": "change",
+            "token_B": "change"
+          },
+          "msg.sender": {
+            "token_A": "change",
+            "token_B": "change"
+          }
+        }
+      },
+      "skim": {
+        "balanceOf": {
+          "to": {
+            "token_A": "increase",
+            "token_B": "increase"
+          },
+          "this": {
+            "token_A": "decrease",
+            "token_B": "decrease"
+          }
+        }
+      },
+      "sync": {
+        "reserve": {
+          "token_A": "change",
+          "token_B": "change"
+        }
+      }
+    }
+  }
+  

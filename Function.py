@@ -58,7 +58,7 @@ class FFunction:
         self.parent_contract:FContract = parentContract
         # all state variables written in this function
         self.stateVarWrite = self.func.state_variables_written
-        self.highlevelCalls = self.func.all_high_level_calls
+        self.highlevelCalls = self.func.all_high_level_calls()
         self.FormulaMap:Dict[FStateVar, FFormula] = {}
         self.WaitCall = False
         self.solver = Solver()
@@ -113,28 +113,38 @@ class FFunction:
 
 
     def printFFormulaMap(self, context:FFuncContext):
+        print(f"Contract: [{self.parent_contract.main_name}], Function: <{self.func.canonical_name}>")
+
+        formula_set = set()
+
         for stateVar, fformula in self.FormulaMap.items():
+            
             if len(fformula.expressions_with_constraints) == 0:
                 continue
+
+            if stateVar in formula_set:
+                continue
+            formula_set.add(stateVar)
                 
             var = stateVar.stateVar
             if not isinstance(var, FMap):
                 self._log_state_var(var.name, fformula)
                 continue
+            
                 
-            if var.index not in context.mergeFormulas:
+            if var.index not in context.currentFormulaMap.keys():
                 self._log_state_var(var.name, fformula)
                 continue
                 
-            exps = context.mergeFormulas[var.index].expressions_with_constraints
+            exps = context.currentFormulaMap[var.index].expressions_with_constraints
             if not exps:
                 self._log_state_var(var.name, fformula)
                 continue
                 
             for exp, _ in exps:
                 if isinstance(var.map, FMap):
-                    if var.map.index in context.mergeFormulas:
-                        inner_exps = context.mergeFormulas[var.map.index].expressions_with_constraints
+                    if var.map.index in context.currentFormulaMap.keys():
+                        inner_exps = context.currentFormulaMap[var.map.index].expressions_with_constraints
                         if inner_exps:
                             for iexp, _ in inner_exps:
                                 self._log_state_var(f"{var.map.map_name}[{iexp}][{exp}]", fformula)
@@ -147,7 +157,7 @@ class FFunction:
 
 
     def _log_state_var(self, var_name: str, fformula: FFormula):
-        logger.debug(f"StateVar: {var_name} in function {self.func.canonical_name}, formula: {fformula}")
+        print(f"StateVar: {var_name}, formula: {fformula}")
 
 
     def __str__(self):
@@ -156,7 +166,7 @@ class FFunction:
 
     def analyzeNode(self, node: Node, context:FFuncContext):
         # del formula map of temp variable
-        context.clearTempVariableCache()
+        # context.clearTempVariableCache()
         if node.type in {NodeType.EXPRESSION, NodeType.VARIABLE, NodeType.RETURN}:
             self.analyzeNodeIRs(node, context)
 
@@ -305,14 +315,16 @@ class FFunction:
         # tackle with different kinds of call
 
         # especially for require
-        if isinstance(ir, SolidityCall) and ir.function in [
+        if isinstance(ir, SolidityCall) and (ir.function in [
             SolidityFunction("require(bool,string)"), 
             SolidityFunction("require(bool)"),
             SolidityFunction("require(bool,error)"),
             SolidityFunction("assert(bool)"),
             SolidityFunction("revert()"),
             SolidityFunction("revert(string)"),
-        ]: 
+        ] or ir.function.full_name in [
+            "abi.encodeWithSelector()"
+        ]): 
             
             if ir.function in [
             SolidityFunction("require(bool,string)"), 
@@ -346,6 +358,7 @@ class FFunction:
             ]:
                 context.stop = True
                 return
+            
             elif ir.function.full_name in [
                 "abi.encodeWithSelector()"
             ]:
@@ -360,6 +373,8 @@ class FFunction:
             # highlevel call requires more processing     
             callee_func, callee_context = None, None
             if (isinstance(ir, HighLevelCall) and not isinstance(ir, LibraryCall)) or isinstance(ir, LowLevelCall):
+                # ignore set
+                # return
                 if not isinstance(ir, LowLevelCall):
                     callee_func = ir.function
                 # get callee contract variable
@@ -368,15 +383,22 @@ class FFunction:
                 callee_addr = self.parent_contract.online_helper.get_contract_address(dest, context, context.parent_contract.address)
                 if callee_addr:
                     from Contract import FContract
-                    callee_info = self.parent_contract.online_helper.get_contract_sourcecode(callee_addr)
-                    sli_contract = self.parent_contract.online_helper.get_slither_contract(callee_info)
-                    callee_contract = FContract(sli_contract=sli_contract, path=callee_info["contract_file"], name=callee_info["contract_name"], online_helper=self.parent_contract.online_helper, address=callee_addr)
+                    if callee_addr in self.parent_contract.online_helper.cached_contracts.keys():
+                        logger.debug(f"hit the cached contract: {callee_addr}")
+                        callee_contract = self.parent_contract.online_helper.cached_contracts[callee_addr]
+                        sli_contract = callee_contract.sli_contract
+                    else:
+                        callee_info = self.parent_contract.online_helper.get_contract_sourcecode(callee_addr)
+                        sli_contract = self.parent_contract.online_helper.get_slither_contract(callee_info)
+                        callee_contract = FContract(sli_contract=sli_contract, path=callee_info["contract_file"], name=callee_info["contract_name"], online_helper=self.parent_contract.online_helper, address=callee_addr)
+                        self.parent_contract.online_helper.cached_contracts[callee_addr] = callee_contract
                     if isinstance(ir, LowLevelCall):
                         try:
-                            selector = self.parent_contract.online_helper.get4bytesinfo(context.low_level_args[ir.destination][0])
+                            selector = self.parent_contract.online_helper.get4bytesinfo(hex(context.low_level_args[ir.arguments[0]][0].value))
                             func = sli_contract.get_function_from_signature(selector)
                         except Exception as e:
                             logger.warning(f"Error in getting function from selector: {e}")
+                            func = None
                             return
                         finally:
                             if not func:
@@ -386,6 +408,17 @@ class FFunction:
                     callee_func = func
                     callee_context = FFuncContext(func=func, parent_contract=callee_contract, parent_func=context.func, caller_node=ir.node)
             else:
+                if ir.function.canonical_name == "Math.sqrt(uint256)":
+                    sqrt = Function('sqrt', IntSort(), IntSort())
+                    temp_var = ir.lvalue
+                    formula = FFormula(FStateVar(self.parent_contract, temp_var), self.parent_contract, self)
+                    context.updateContext(temp_var, formula)
+                    var = self.getRefPointsTo(ir.arguments[0], context)
+                    # apply sqrt
+                    for exp, cons in self.handleVariableExpr(var, context):
+                        sqrt_exp = sqrt(exp)
+                        context.currentFormulaMap[temp_var].expressions_with_constraints.append(ExpressionWithConstraint(sqrt_exp, cons))
+                    return
                 callee_context = FFuncContext(func=ir.function, parent_contract=context.parent_contract, parent_func=context.func, caller_node=ir.node)
                 callee_func = ir.function
             if not callee_context:
@@ -400,7 +433,7 @@ class FFunction:
             # add state variable context
             temp_context = context.copy()
             temp_context.clearRefMap()
-            temp_context.clearTempVariableCache()
+            # temp_context.clearTempVariableCache()
             callee_context.currentFormulaMap = temp_context.currentFormulaMap
             # map args to params
             self.mapArgsToParams(ir, callee_func, context, callee_context)
@@ -455,7 +488,10 @@ class FFunction:
             if is_int(exp) and (ir.type == ElementaryType("address") or ir.type.storage_size[0] == 20):
                 converted_exp = Int2BV(exp, 160)
             else:
-                converted_exp = exp
+                if is_int_value(exp) and exp == IntVal(-1):
+                    converted_exp = IntVal(2**112 - 1)
+                else:
+                    converted_exp = exp
             converted_exps.append(ExpressionWithConstraint(converted_exp, cons))
         fformula = FFormula(FStateVar(self.parent_contract, ir.lvalue), self.parent_contract, self)
         fformula.expressions_with_constraints = converted_exps
@@ -624,9 +660,15 @@ class FFunction:
         
         for litem, ritem in zip(lexp, rexp):
             # all possible binary op
-            combined_expr = simplify(op(litem.expression, ritem.expression))
+            l_expr, r_expr = litem.expression, ritem.expression
+            if op.__name__ == '<lambda>' and op.__code__.co_code == (lambda x, y: x % y).__code__.co_code:
+                if isinstance(l_expr, RatNumRef):
+                    l_expr = ToInt(l_expr)
+                if isinstance(r_expr, RatNumRef):
+                    r_expr = ToInt(r_expr)
+            combined_expr = simplify(op(l_expr, r_expr))
             if combined_expr == None:
-                logger.error(f"Error in merging expressions: {litem.expression} and {ritem.expression}")
+                logger.error(f"Error in merging expressions: {l_expr} and {r_expr}")
             combined_constraint = simplify(self.Implied_exp(litem.constraint, ritem.constraint))
             if not self.Check_constraint(combined_constraint):
                 continue
@@ -651,6 +693,8 @@ class FFunction:
             formula = BitVec(var.name, 160)
         elif var.type.storage_size[0] == 20:
             formula = BitVec(var.name, 160)
+        else:
+            formula = Int(var.name)
 
         return formula
 
@@ -792,8 +836,15 @@ class FFunction:
             return
         logger.debug(f"[N] Parent Function: {context.parent_func.canonical_name if context.parent_func else 'None'} \n [N] Current Function <{context.func.canonical_name}> Processing node {node} {node.node_id}")
         for ir in node.irs:
-            logger.debug(f"----- ir[{type(ir)}] : {ir}") 
-    
+            logger.debug(f"----- ir[{type(ir)}] : {ir}")
+
+
+    def printHighlevelCalls(self):
+        print("Highlevel_calls: ")
+        for contract, call in self.highlevelCalls:
+            # print call
+            print(call.function.canonical_name)
+
                           
     # reorder basic blocks(nodes) of function (especially for those have modifiers)
     # pass Context to the son nodes
@@ -846,6 +897,8 @@ class FFunction:
                 self.process_general_node(context, node, current_work_list)
 
         self.printFFormulaMap(context)
+
+        self.printHighlevelCalls()
 
         return
     

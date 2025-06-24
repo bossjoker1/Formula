@@ -36,6 +36,8 @@ class OnlineHelper:
         self.chain = chain
         self.w3 = Web3(Web3.HTTPProvider(CHAIN_INFO[chain]))
         self.block_number = block_number if block_number != -1 else self.get_block_number()
+        self.cached_contracts = {}
+        self.var2onchain_addr = {}
 
 
     def get_block_number(self):
@@ -87,6 +89,12 @@ class OnlineHelper:
     def get_contract_sourcecode(self, address: str, save_dir: str = './contracts') -> dict:
         logger.info(f"get contract sourcecode: {address}")
         address = self.w3.to_checksum_address(address)
+
+        if address in self.cached_contracts:
+            return {
+                "address": address,
+            }
+
         
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
@@ -198,6 +206,10 @@ class OnlineHelper:
             return None
             
         try:
+            address = contract_info.get("address", "")
+            if address in self.cached_contracts:
+                return self.cached_contracts[address].sli_contract
+
             compiler_version = contract_info.get("compiler_version", "")
             if not compiler_version:
                 logger.error("No compiler version found in contract info")
@@ -264,7 +276,7 @@ class OnlineHelper:
 
 def test_OnlineHelper():
     helper = OnlineHelper("bnb", -1)
-    address = "0x55d398326f99059fF775485246999027B3197955"
+    address = "0x40eD17221b3B2D8455F4F1a05CAc6b77c5f707e3"
     res = helper.get_contract_sourcecode(address)
     print(res)
     sli_contract = helper.get_slither_contract(res)

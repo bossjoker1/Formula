@@ -40,8 +40,11 @@ class FFormula:
 
     def __str__(self):
         result = "\n"
-        for idx, expr_with_constraint in enumerate(list(set(self.expressions_with_constraints))):
-            result += f"Expression [{idx}]: {expr_with_constraint.expression}, \nConstraint [{idx}]: {expr_with_constraint.constraint}\n"
+        expr_set = set()
+        for expr, _ in self.expressions_with_constraints:
+            expr_set.add(expr)
+        for idx, expr in enumerate(list(expr_set)):
+            result += f"Expression [{idx}]: {expr} \n"
         return result
     
 

@@ -6,6 +6,7 @@ from typing import List
 from z3 import BitVecVal
 from Function import FFunction
 from Helper import OnlineHelper
+from web3 import Web3
 import config
 
 
@@ -54,17 +55,22 @@ class FContract:
 # online mode
 def OnlineBuild(contract_info):
     onlineHelper = OnlineHelper(contract_info["chain"], contract_info["block"])
+    w3 = Web3()
     for addr in contract_info["addresses"]:
+        addr = w3.to_checksum_address(addr)
         logger.debug(f"Building formula for contract at address {addr}")
         config_info = onlineHelper.get_contract_sourcecode(addr)
         sli_contract = onlineHelper.get_slither_contract(config_info)
         fcontract = FContract(sli_contract=sli_contract, path=config_info["contract_file"], name=config_info["contract_name"], online_helper=onlineHelper, address=addr)
+        fcontract.online_helper.cached_contracts[addr] = fcontract
         for func in fcontract.sli_contract.functions:
             ffunc = FFunction(func, fcontract)
-            # logger.debug(f"[F] function name:  {ffunc.func.canonical_name}")
-            if ffunc.func.canonical_name == "AEST.distributeFee()":
-                print(ffunc)
-                ffunc.buildCFG()
+            logger.debug(f"[F] function name:  {ffunc.func.canonical_name}")
+            # PancakeRouter.addLiquidityETH(address,uint256,uint256,uint256,address,uint256)
+            # PancakeRouter.addLiquidity(address,address,uint256,uint256,uint256,uint256,address,uint256)
+            # if ffunc.func.canonical_name == "AEST.addInitLiquidity(uint256)":
+            #     print(ffunc)
+            #     ffunc.buildCFG()
                 
 
 
