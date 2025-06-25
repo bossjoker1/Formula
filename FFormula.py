@@ -1,7 +1,13 @@
-from z3 import ExprRef, Solver
-from typing import NamedTuple, List, Any, Union
+from loguru import logger
+from z3 import *
+from typing import NamedTuple, List, Any, Union, Optional
 from slither.core.variables import StateVariable, Variable
-from slither.slithir.operations import HighLevelCall
+from slither.slithir.operations import BinaryType
+from slither.core.solidity_types import (
+    ElementaryType,
+    MappingType,
+)
+import config
 
 
 class ExpressionWithConstraint(NamedTuple):
@@ -12,16 +18,6 @@ class ExpressionWithConstraint(NamedTuple):
 class FStateVar(NamedTuple):
     contract: Any
     stateVar: Variable
-
-# uncompleted
-class FHighLevelCall:
-    def __init__(self, contract, func, call:HighLevelCall):
-        self.highlevelCall = call
-        self.parent_contract = contract
-        self.parent_function = func
-
-
-Fkey = Union[FStateVar, FHighLevelCall]
 
 
 class FFormula:
@@ -44,8 +40,11 @@ class FFormula:
 
     def __str__(self):
         result = "\n"
-        for idx, expr_with_constraint in enumerate(list(set(self.expressions_with_constraints))):
-            result += f"Expression [{idx}]: {expr_with_constraint.expression}, \nConstraint [{idx}]: {expr_with_constraint.constraint}\n"
+        expr_set = set()
+        for expr, _ in self.expressions_with_constraints:
+            expr_set.add(expr)
+        for idx, expr in enumerate(list(expr_set)):
+            result += f"Expression [{idx}]: {expr} \n"
         return result
     
 
@@ -53,75 +52,60 @@ class FFormula:
         return list(set(self.expressions_with_constraints))
     
 
+# ==============================================================================================================
+# export functions:
 
-# for Map/Member/Array
-class FMap(Variable):
-    def __init__(self, map:Variable, index:Variable, ttype):
-        super().__init__()
-        self._map = map
-        self._index = index
-        self._name = f"{map.name}[{index.name}]"
-        self._type = ttype
-
-
-    def __str__(self):
-        return f"{self.map.name}[{self.index.name}]"
-    
-    
-    @property
-    def map(self):
-        return self._map
-    
-    
-    @property
-    def index(self):
-        return self._index
-    
-
-    def __eq__(self, other):
-        if isinstance(other, FMap):
-            return (self.map == other.map and
-                    self.index == other.index and
-                    self.type == other.type)
-        return False
-    
-
-    def __hash__(self):
-        return hash((self.map, self.index, self.type))
+def Check_constraint(cons) -> bool:
+    solver = Solver()
+    solver.add(cons)
+    res = solver.check()
+    return res == sat
 
 
+def Implied_exp(expr1, expr2):
+    if config.refined:
+        solver = Solver()
+        solver.add(And(expr1, Not(expr2)))
+        res_1 = solver.check() == unsat
+        solver.reset()
+        solver.add(And(expr2, Not(expr1)))
+        res_2 = solver.check() == unsat
+        if res_1:
+            return expr1
+        elif res_2:
+            return expr2
+        else:
+            return And(expr1, expr2)
+    else:
+        return And(expr1, expr2)
 
-# for tuple unpacking
-class FTuple(Variable):
-    def __init__(self, tuple:Variable, index:int, ttype=None):
-        super().__init__()
-        self._tuple = tuple
-        self._index = index
-        self._name = f"{tuple.name}.({index})"
-        self._type = ttype
+def Reconstruct_If(exprs_with_constraints: List[ExpressionWithConstraint]) -> Optional[ExprRef]:
+        if not exprs_with_constraints:
+            return None
+        head = None
+        for expr, cond in reversed(exprs_with_constraints):
+            if head is None:
+                head = If(cond, expr, BoolVal(False))
+            else:
+                head = If(cond, expr, head)
+        if is_false(simplify(head)):
+            return Not(cond)
+        elif is_true(simplify(head)):
+            return cond
+        else:
+            return head
 
 
-    def __str__(self):
-        return f"{self.tuple.name}[{self.index}]"
+def Expand_If(expr: ExprRef, cond: ExprRef) -> List[ExpressionWithConstraint]:
+    expressions = []
+    stack = [expr]
+    while stack:
+        current_expr = stack.pop()
+        if is_app_of(current_expr, Z3_OP_ITE):
+            true_expr = ExpressionWithConstraint(expression=current_expr.arg(1), constraint=simplify(And(cond, current_expr.arg(0))))
+            expressions.append(true_expr)
+            stack.append(current_expr.arg(2))
+        else:
+            expressions.append(ExpressionWithConstraint(expression=current_expr, constraint=cond))
+    return expressions
     
-    
-    @property
-    def tuple(self):
-        return self._tuple
-    
-    
-    @property
-    def index(self):
-        return self._index
-    
-    
-    def __eq__(self, other):
-        if isinstance(other, FTuple):
-            return (self.tuple == other.tuple and
-                    self.index == other.index and
-                    self.type == other.type)
-        return False
-    
-
-    def __hash__(self):
-        return hash((self.tuple, self.index, self.type))

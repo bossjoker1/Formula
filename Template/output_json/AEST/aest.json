@@ -1,0 +1,87 @@
+{
+    "contract": "AEST",
+    "functions": {
+      "constructor": {
+        "totalSupply": {
+          "AEST": "increase"
+        },
+        "balanceOf": {
+          "this": {
+            "AEST": "increase"
+          },
+          "msg.sender": {
+            "AEST": "increase"
+          }
+        }
+      },
+      "addInitLiquidity": {
+        "balanceOf": {
+          "this": {
+            "AEST": "decrease"
+          }
+        }
+      },
+      "burn": {
+        "balanceOf": {
+          "msg.sender": {
+            "AEST": "decrease"
+          }
+        },
+        "totalSupply": {
+          "AEST": "decrease"
+        }
+      },
+      "buyTokenAndFees": {
+        "balanceOf": {
+          "from": {
+            "AEST": "decrease"
+          },
+          "to": {
+            "AEST": "increase"
+          }
+        },
+        "totalSupply": {
+          "AEST": "decrease"
+        },
+        "swapFeeTotal": "increase"
+      },
+      "sellTokenAndFees": {
+        "balanceOf": {
+          "from": {
+            "AEST": "decrease"
+          },
+          "to": {
+            "AEST": "increase"
+          }
+        },
+        "totalSupply": {
+          "AEST": "decrease"
+        },
+        "swapFeeTotal": "increase"
+      },
+      "distributeFee": {
+        "balanceOf": {
+          "uniswapV2Pair": {
+            "AEST": "decrease"
+          },
+          "monkeyWallet": {
+            "AEST": "increase"
+          },
+          "birdWallet": {
+            "AEST": "increase"
+          },
+          "foundationWallet": {
+            "AEST": "increase"
+          },
+          "technologyWallet": {
+            "AEST": "increase"
+          },
+          "marketingWallet": {
+            "AEST": "increase"
+          }
+        },
+        "swapFeeTotal": "reset"
+      }
+    }
+  }
+  

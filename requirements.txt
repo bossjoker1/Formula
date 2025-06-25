@@ -1,0 +1,6 @@
+toml>=0.10.0
+slither-analyzer
+web3
+requests
+loguru
+z3-solver

@@ -1,0 +1,192 @@
+{
+    "contract": "PancakeRouter",
+    "functions": {
+      "addLiquidity": {
+        "reserve": {
+          "token_A": "increase",
+          "token_B": "increase"
+        },
+        "totalSupply": {
+          "pair_token": "increase"
+        },
+        "balanceOf": {
+          "msg.sender": {
+            "token_A": "decrease",
+            "token_B": "decrease"
+          },
+          "to": {
+            "pair_token": "increase"
+          }
+        },
+        "allowance": {
+          "msg.sender": {
+            "router": {
+              "token_A": "decrease",
+              "token_B": "decrease"
+            }
+          }
+        }
+      },
+      "addLiquidityETH": {
+        "reserve": {
+          "token_A": "increase",
+          "token_B": "increase"
+        },
+        "totalSupply": {
+          "pair_token": "increase"
+        },
+        "balanceOf": {
+          "msg.sender": {
+            "token_A": "decrease"
+          },
+          "to": {
+            "pair_token": "increase"
+          }
+        },
+        "allowance": {
+          "msg.sender": {
+            "router": {
+              "token_A": "decrease"
+            }
+          }
+        }
+      },
+      "removeLiquidity": {
+        "reserve": {
+          "token_A": "decrease",
+          "token_B": "decrease"
+        },
+        "totalSupply": {
+          "pair_token": "decrease"
+        },
+        "balanceOf": {
+          "msg.sender": {
+            "pair_token": "decrease"
+          },
+          "to": {
+            "token_A": "increase",
+            "token_B": "increase"
+          }
+        }
+      },
+      "removeLiquidityETH": {
+        "reserve": {
+          "token_A": "decrease",
+          "token_B": "decrease"
+        },
+        "totalSupply": {
+          "pair_token": "decrease"
+        },
+        "balanceOf": {
+          "msg.sender": {
+            "pair_token": "decrease"
+          },
+          "to": {
+            "token_A": "increase",
+            "token_B": "increase"
+          }
+        }
+      },
+      "swapExactTokensForTokens": {
+        "reserve": {
+          "token_A": "change",
+          "token_B": "change"
+        },
+        "balanceOf": {
+          "msg.sender": {
+            "token_A": "decrease"
+          },
+          "to": {
+            "token_B": "increase"
+          }
+        },
+        "allowance": {
+          "msg.sender": {
+            "router": {
+              "token_A": "decrease"
+            }
+          }
+        }
+      },
+      "swapTokensForExactTokens": {
+        "reserve": {
+          "token_A": "change",
+          "token_B": "change"
+        },
+        "balanceOf": {
+          "msg.sender": {
+            "token_A": "decrease"
+          },
+          "to": {
+            "token_B": "increase"
+          }
+        },
+        "allowance": {
+          "msg.sender": {
+            "router": {
+              "token_A": "decrease"
+            }
+          }
+        }
+      },
+      "swapExactETHForTokens": {
+        "reserve": {
+          "token_A": "change",
+          "token_B": "change"
+        },
+        "balanceOf": {
+          "to": {
+            "token_B": "increase"
+          }
+        }
+      },
+      "swapTokensForExactETH": {
+        "reserve": {
+          "token_A": "change",
+          "token_B": "change"
+        },
+        "balanceOf": {
+          "msg.sender": {
+            "token_A": "decrease"
+          }
+        },
+        "allowance": {
+          "msg.sender": {
+            "router": {
+              "token_A": "decrease"
+            }
+          }
+        }
+      },
+      "swapExactTokensForETH": {
+        "reserve": {
+          "token_A": "change",
+          "token_B": "change"
+        },
+        "balanceOf": {
+          "msg.sender": {
+            "token_A": "decrease"
+          }
+        },
+        "allowance": {
+          "msg.sender": {
+            "router": {
+              "token_A": "decrease"
+            }
+          }
+        }
+      },
+      "swapETHForExactTokens": {
+        "reserve": {
+          "token_A": "change",
+          "token_B": "change"
+        },
+        "balanceOf": {
+          "to": {
+            "token_B": "increase"
+          }
+        }
+      }
+    }
+  }
+  

@@ -1,0 +1,10 @@
+{
+    "eth":{
+        "uniswapv2router02": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+        "sushiswap": "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506"
+    },
+    "bsc":{
+        "pancakerouter": "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+        "swaprouter": "0x74Dca1Bd946b9472B2369E11bC0E5603126E4C18"
+    }
+}

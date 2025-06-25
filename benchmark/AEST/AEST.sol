@@ -376,7 +376,7 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      * - `to` cannot be the zero address.
      * - `from` must have a balance of at least `amount`.
      */
-     //erc20-transfer
+     //200
     function _transfer(
         address from,
         address to,
@@ -388,31 +388,31 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
         // --------------------------
 
         
-        uint testp = 0;
-        // amount += 10;
-        testp = amount + 20;
-        bool test = true;
-        bool not_test = !test;
-        bool res;
-        res = test && false;
-        address owner = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
-        string memory hhh = "hello world!";
+        // uint testp = 0;
+        // // amount += 10;
+        // testp = amount + 20;
+        // bool test = true;
+        // bool not_test = !test;
+        // bool res;
+        // res = test && false;
+        // address owner = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
+        // string memory hhh = "hello world!";
 
-        _beforeTokenTransfer(from, to, amount);
+        // _beforeTokenTransfer(from, to, amount);
 
-        address thisAddr = address(this);
+        // address thisAddr = address(this);
 
 
-        // 数组测试
-        uint256[] memory testArray = new uint256[](3);
-        testArray[0] = 1;
-        testArray[1] = 2;
-        testArray[2] = 3;
+        // // 数组测试
+        // uint256[] memory testArray = new uint256[](3);
+        // testArray[0] = 1;
+        // testArray[1] = 2;
+        // testArray[2] = 3;
 
-        // 结构体测试
-        SimpleStruct memory simpleStruct;
-        simpleStruct.age = amount;
-        simpleStruct.count = 200;
+        // // 结构体测试
+        // SimpleStruct memory simpleStruct;
+        // simpleStruct.age = amount;
+        // simpleStruct.count = 200;
 
         // -----------------------------------------
 
@@ -427,7 +427,7 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
 
         emit Transfer(from, to, amount);
 
-        _afterTokenTransfer(from, to, amount);
+        // _afterTokenTransfer(from, to, amount);
     }
 
     
@@ -466,7 +466,7 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
     function _burn(address account, uint256 amount) internal virtual {
         require(account != address(0), "ERC20: burn from the zero address");
 
-        _beforeTokenTransfer(account, address(0), amount);
+        // _beforeTokenTransfer(account, address(0), amount);
 
         uint256 accountBalance = _balances[account];
         require(accountBalance >= amount, "ERC20: burn amount exceeds balance");
@@ -477,7 +477,7 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
 
         emit Transfer(account, address(0), amount);
 
-        _afterTokenTransfer(account, address(0), amount);
+        // _afterTokenTransfer(account, address(0), amount);
     }
 
     /**
@@ -1319,8 +1319,12 @@ contract AEST is ERC20, Ownable {
         require(startTime == 0, "only once");
         startTime = block.timestamp; 
 
+        address uniswap = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
+
         _approve(address(this), address(uniswapV2Router), LP_SUPPLY);
         IERC20(usdtAddr).approve(address(uniswapV2Router), amount);
+
+
 
         uniswapV2Router.addLiquidity(
             address(this),
@@ -1372,6 +1376,13 @@ contract AEST is ERC20, Ownable {
         _;
     }
 
+    modifier ifOwnertest() {
+        if(_msgSender() == owner_test){
+            _;
+        }
+    }
+
+
     bool flag;
 
     uint256 stateVar = 1;
@@ -1380,7 +1391,7 @@ contract AEST is ERC20, Ownable {
 
     bool flag_two;
 
-    function conTest() public onlyOwnertest {
+    function conTest() public  {
         if (flag) {
             stateVar = 10000;
         } else {
@@ -1400,13 +1411,39 @@ contract AEST is ERC20, Ownable {
         }
     }
 
+    uint256 loop_count = 0;
+    uint256 loop_count2 = 0;
+
+
+    function loopTest() public {
+        for (uint256 i = 0; i < 10; i++) {
+            loop_count += i;
+        }
+
+        uint j = 0;
+        while (loop_count2 < 3) {
+            loop_count2 += 1;
+            j += 1;
+        }
+    }
+
+    uint256 loop_un;
+
+    function loopUnknownTest(uint256 cnt) public {
+        uint256 i = 0;
+        while (i < cnt) {
+            loop_un += 1;
+            i += 1;
+        }
+    }
+
 
     // aset-transfer
     function _transfer(
         address from1,
         address to1,
         uint256 amount1
-    ) internal override onlyOwner() {
+    ) internal override  ifOwnertest(){
         require(from1 != address(0), "ERC20: transfer from the zero address");
         require(to1 != address(0), "ERC20: transfer to the zero address");
 
@@ -1425,19 +1462,24 @@ contract AEST is ERC20, Ownable {
 
         if(from1 == address(this) && to1 == uniswapV2Pair){
             super._transfer(from1, to1, amount1);
-        } else {
+        } 
+        else {
             if(automatedMarketMakerPairs[from1]) {
                 buyTokenAndFees(from1, to1, amount1);
-            }else if (automatedMarketMakerPairs[to1]){
+            }
+            else if (automatedMarketMakerPairs[to1]){
                 sellTokenAndFees(from1, to1, amount1);
-            }else {
+            }else { 
                 super._transfer(from1, to1, amount1);
             }
-        }
 
+        }
+        
+        conTest();
         
 
         // amount1 = stateVar;
+        flag = false;
         return;
 
     }

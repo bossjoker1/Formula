@@ -1,0 +1,1 @@
+{"errors":[{"component":"general","formattedMessage":"* Line 1, Column 1\n  Syntax error: value, object or array expected.\n* Line 3, Column 1\n  Extra non-whitespace after JSON value.\n","message":"* Line 1, Column 1\n  Syntax error: value, object or array expected.\n* Line 3, Column 1\n  Extra non-whitespace after JSON value.\n","severity":"error","type":"JSONError"}]}
